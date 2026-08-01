@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #030712;
+    overflow-x: hidden;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+  }
+}
+
+/* High-Visibility Modern Scrollbars for Web & Mobile */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  display: block !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.8);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%);
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, #818cf8 0%, #c084fc 100%);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin !important;
+  scrollbar-color: #6366f1 rgba(30, 41, 59, 0.8) !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Touch Momentum & Snap Scrolling for Mobile Cards & Pill Bars */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  touch-action: pan-x pan-y;
+}
+
+.touch-snap-x {
+  scroll-snap-type: x mandatory;
+}
+
+.touch-snap-item {
+  scroll-snap-align: start;
+}
+
+/* Custom Glow & Glassmorphism Utilities */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel-glow {
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.15);
+}
+
+.glow-border-indigo {
+  box-shadow: 0 0 20px -3px rgba(99, 102, 241, 0.35);
+}
+
+.glow-border-purple {
+  box-shadow: 0 0 20px -3px rgba(168, 85, 247, 0.35);
+}
+
+.glow-border-pink {
+  box-shadow: 0 0 20px -3px rgba(236, 72, 153, 0.35);
+}
+
+/* Ultra-Clean Modern Web Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.7);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.45) 0%, rgba(168, 85, 247, 0.45) 100%);
+  border-radius: 9999px;
+  border: 1.5px solid rgba(15, 23, 42, 0.8);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.85) 0%, rgba(168, 85, 247, 0.85) 100%);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Coarse Touch Screen Device Adjustments */
+@media (pointer: coarse) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(129, 140, 248, 0.35);
+  }
+}
+
+/* 3D Flashcard Perspective */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+

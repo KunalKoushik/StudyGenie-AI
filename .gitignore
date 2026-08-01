@@ -1,0 +1,188 @@
+# Kiro IDE
+.kiro/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Node.js Backend
+backend/node_modules/
+backend/npm-debug.log*
+backend/yarn-debug.log*
+backend/yarn-error.log*
+backend/lerna-debug.log*
+backend/.npm
+backend/.eslintcache
+backend/.nyc_output
+backend/lib-cov
+backend/coverage/
+backend/.grunt
+backend/bower_components
+backend/.lock-wscript
+backend/build/Release
+backend/.env
+backend/.env.local
+backend/.env.development.local
+backend/.env.test.local
+backend/.env.production.local
+backend/logs
+backend/*.log
+backend/pids
+backend/*.pid
+backend/*.seed
+backend/*.pid.lock
+backend/.sass-cache/
+backend/.connect.lock
+backend/.nyc_output/
+backend/jspm_packages/
+backend/typings/
+backend/.cache/
+backend/etc
+# Flutter Frontend
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/.pub-cache/
+frontend/.pub/
+frontend/build/
+frontend/.vscode/
+frontend/.idea/
+frontend/*.iml
+frontend/*.ipr
+frontend/*.iws
+frontend/.metadata
+
+# Flutter/Dart specific
+frontend/pubspec.lock
+frontend/.flutter-plugins-dependencies
+
+# Android
+frontend/android/.gradle/
+frontend/android/captures/
+frontend/android/gradlew
+frontend/android/gradlew.bat
+frontend/android/local.properties
+frontend/android/**/GeneratedPluginRegistrant.java
+frontend/android/key.properties
+frontend/android/.externalNativeBuild/
+
+# iOS
+frontend/ios/Flutter/flutter_export_environment.sh
+frontend/ios/Flutter/Generated.xcconfig
+frontend/ios/Flutter/flutter_export_environment.sh
+frontend/ios/ServiceDefinitions.json
+frontend/ios/Runner/GeneratedPluginRegistrant.*
+
+# macOS
+frontend/macos/Flutter/GeneratedPluginRegistrant.swift
+frontend/macos/Flutter/Flutter-Generated.xcconfig
+frontend/macos/Flutter/ephemeral/
+
+# Windows
+frontend/windows/flutter/generated_plugin_registrant.cc
+frontend/windows/flutter/generated_plugin_registrant.h
+frontend/windows/flutter/generated_plugins.cmake
+
+# Linux
+frontend/linux/flutter/generated_plugin_registrant.cc
+frontend/linux/flutter/generated_plugin_registrant.h
+frontend/linux/flutter/generated_plugins.cmake
+
+# Web
+frontend/web/
+
+# Exceptions to above rules
+!frontend/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Dependency directories
+node_modules/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+.env.production
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Temporary folders
+tmp/
+temp/
+# --- Python Basics ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+*.egg-info/
+
+# --- Environment Variables (CRITICAL) ---
+.env
+.env.local
+
+# --- Project Data (Too big for GitHub) ---
+# We ignore the raw data and the vector DB
+data/raw_exam_data.csv
+data/cleaned_exam.json
+# Ignore ScienceQA large data & vector store
+ScienceQA/data/ScienceQA_with_context2.csv
+ScienceQA/data/*.csv
+ScienceQA/vector_store/
+ScienceQA/vector_store/**
+data/images/
+vector_store/
+
+# --- IDE Settings ---
+.vscode/
+.idea/
+*.swp
+
+# --- OS Junk ---
+.DS_Store
+Thumbs.db
+
+# Android keystore properties (contains sensitive passwords)
+frontend/android/key.properties
