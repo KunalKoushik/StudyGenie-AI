@@ -1,13 +1,87 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import path from 'path';
+import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
+import { db, initDB, seedDefaultUserIfEmpty, checkAndIncrementAIQuota } from './server/db';
+import { 
+  requireStrictAuth,
+  authenticateUserToken,
+  verifyCsrfToken,
+  hashPassword, 
+  comparePassword, 
+  generateToken, 
+  generateCsrfToken,
+  AuthenticatedRequest 
+} from './server/auth';
+import {
+  PORT,
+  GEMINI_MODEL,
+  ALLOWED_ORIGIN
+} from './server/config';
+import {
+  tutorRequestSchema,
+  flashcardGenSchema,
+  quizGenSchema,
+  visionAnalyzeSchema,
+  syllabusAnalyzeSchema,
+  registerSchema,
+  loginSchema
+} from './server/validation';
+
+// Initialize SQLite database
+initDB();
+seedDefaultUserIfEmpty();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
 
-app.use(cors());
+// Security Headers (Helmet)
+app.use(helmet({
+  contentSecurityPolicy: false, // Disabled for inline KaTeX SVG and Vite HMR scripts
+  crossOriginEmbedderPolicy: false
+}));
+
+app.use(cors({
+  origin: ALLOWED_ORIGIN === '*' ? true : ALLOWED_ORIGIN,
+  credentials: true
+}));
+
+app.use(cookieParser());
 app.use(express.json({ limit: '20mb' }));
+
+// Rate Limiting Middleware (60 reqs/min per IP) with automatic memory cleanup
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, data] of rateLimitMap.entries()) {
+    if (now > data.resetTime) rateLimitMap.delete(ip);
+  }
+}, 60000);
+
+app.use('/api/', (req: Request, res: Response, next) => {
+  const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
+  const now = Date.now();
+  const limit = 60;
+  const windowMs = 60 * 1000;
+
+  const current = rateLimitMap.get(ip);
+  if (!current || now > current.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + windowMs });
+    return next();
+  }
+
+  if (current.count >= limit) {
+    return res.status(429).json({ success: false, error: 'Too many requests. Please wait a minute before sending another request.' });
+  }
+
+  current.count += 1;
+  next();
+});
+
+// CSRF Verification Middleware for state-changing endpoints
+app.use('/api/', verifyCsrfToken as express.RequestHandler);
 
 // Helper to initialize GenAI client safely with required telemetry headers
 function getGenAI() {
@@ -23,204 +97,437 @@ function getGenAI() {
   });
 }
 
-// Helper to evaluate basic math expressions directly
-function tryEvaluateSimpleMath(expr: string): { directAnswer: string; value: number } | null {
+// Safe Math Evaluator (AST Token Parser avoiding new Function / eval)
+function safeEvaluateMath(expr: string): number | null {
   try {
-    const cleaned = expr
-      = expr
-        .trim()
-        .replace(/\?/g, '')
-        .replace(/what is\s*/gi, '')
-        .replace(/calculate\s*/gi, '')
-        .replace(/solve\s*/gi, '')
-        .replace(/=/g, '')
-        .trim();
+    const tokens = expr.match(/(\d+\.?\d*|\+|\-|\*|\/|\^|\(|\))/g);
+    if (!tokens || tokens.join('') !== expr.replace(/\s+/g, '')) return null;
 
-    // Percentage calculation like "15% of 200"
-    const percentMatch = cleaned.match(/^(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)$/i);
-    if (percentMatch) {
-      const p = parseFloat(percentMatch[1]);
-      const n = parseFloat(percentMatch[2]);
-      const val = (p / 100) * n;
-      return { directAnswer: `${p}% of ${n} = ${val}`, value: val };
-    }
-
-    // Arithmetic expression check: digits, operators +, -, *, /, (, ), ., ^
-    if (/^[\d\s\+\-\*\/\(\)\.\^]+$/.test(cleaned) && /\d/.test(cleaned)) {
-      const sanitized = cleaned.replace(/\^/g, '**');
-      // Safe evaluation limited strictly to numeric math
-      const evalFunc = new Function(`return (${sanitized});`);
-      const val = evalFunc();
-      if (typeof val === 'number' && !isNaN(val) && isFinite(val)) {
-        return { directAnswer: `${cleaned} = ${val}`, value: val };
+    let index = 0;
+    function parseExpression(): number {
+      let value = parseTerm();
+      while (index < tokens.length && (tokens[index] === '+' || tokens[index] === '-')) {
+        const op = tokens[index++];
+        const nextTerm = parseTerm();
+        value = op === '+' ? value + nextTerm : value - nextTerm;
       }
+      return value;
     }
-  } catch {
-    // Non-math string
+
+    function parseTerm(): number {
+      let value = parseFactor();
+      while (index < tokens.length && (tokens[index] === '*' || tokens[index] === '/')) {
+        const op = tokens[index++];
+        const nextFactor = parseFactor();
+        value = op === '*' ? value * nextFactor : value / nextFactor;
+      }
+      return value;
+    }
+
+    function parseFactor(): number {
+      if (tokens[index] === '(') {
+        index++;
+        const val = parseExpression();
+        if (tokens[index] === ')') index++;
+        return val;
+      }
+      if (tokens[index] === '-') {
+        index++;
+        return -parseFactor();
+      }
+      const num = parseFloat(tokens[index++]);
+      if (isNaN(num)) throw new Error('Invalid number');
+      return num;
+    }
+
+    const res = parseExpression();
+    if (typeof res === 'number' && !isNaN(res) && isFinite(res)) {
+      return res;
+    }
+  } catch (e) {
+    return null;
   }
   return null;
 }
 
-// Response Caching & Deterministic Query Normalization Engine
-const responseCache = new Map<string, { data: any; timestamp: number }>();
+// Helper to evaluate basic math expressions directly
+function tryEvaluateSimpleMath(expr: string): { directAnswer: string; value: number } | null {
+  try {
+    const cleaned = expr
+      .trim()
+      .replace(/\?/g, '')
+      .replace(/what is\s*/gi, '')
+      .replace(/calculate\s*/gi, '')
+      .replace(/solve\s*/gi, '')
+      .replace(/=/g, '')
+      .trim();
 
-function normalizeQuery(input: string): string {
-  if (!input) return '';
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s]/g, ' ') // Strip special characters for canonical lookup
-    .replace(/\s+/g, ' '); // Collapse multiple spaces
-}
+    // Square root calculation like "sqaure root of 21/100" or "sqrt(16)"
+    const sqrtMatch = cleaned.match(/^(?:sqaure\s*root|square\s*root|sqrt|root)\s*(?:of)?\s*\(?\s*([0-9\.\/\s\+\-\*]+)\s*\)?$/i);
+    if (sqrtMatch) {
+      const innerStr = sqrtMatch[1].trim();
+      let innerValue: number;
+      if (innerStr.includes('/')) {
+        const [num, den] = innerStr.split('/').map(s => parseFloat(s.trim()));
+        innerValue = num / den;
+      } else {
+        innerValue = parseFloat(innerStr);
+      }
 
-function getCacheKey(prefix: string, ...params: (string | number | boolean)[]): string {
-  return `${prefix}:${params.map(p => normalizeQuery(String(p))).join(':')}`;
-}
+      if (!isNaN(innerValue) && innerValue >= 0) {
+        const val = Math.sqrt(innerValue);
+        const formattedVal = Number.isInteger(val) ? val.toString() : val.toFixed(4);
+        return {
+          directAnswer: `\\sqrt{${innerStr}} = ${formattedVal}`,
+          value: Number(val.toFixed(6))
+        };
+      }
+    }
 
-// Server-Side Centralized Knowledge Base for RAG Consistency
-const RAG_KNOWLEDGE_BASE: Record<string, string[]> = {
-  physics: [
-    "Newton's First Law: An object remains at rest or in uniform motion unless acted upon by an external net force.",
-    "Newton's Second Law: Force equals mass times acceleration (F = m * a). Force is measured in Newtons (N).",
-    "Newton's Third Law: For every action force, there is an equal and opposite reaction force.",
-    "Kinetic Energy Formula: KE = 0.5 * m * v^2 where m is mass (kg) and v is velocity (m/s).",
-    "Gravitational Potential Energy: PE = m * g * h where g is acceleration due to gravity (approx. 9.8 m/s^2)."
-  ],
-  math: [
-    "Pythagorean Theorem: In a right-angled triangle, a^2 + b^2 = c^2, where c is the hypotenuse.",
-    "Quadratic Formula: x = (-b ± √(b^2 - 4ac)) / (2a) for ax^2 + bx + c = 0.",
-    "Compound Interest Formula: A = P(1 + r/n)^(nt) where P is principal, r is annual interest rate, n is compounding frequency, t is time in years.",
-    "Derivative Power Rule: d/dx [x^n] = n * x^(n-1).",
-    "Euler's Identity: e^(i*π) + 1 = 0."
-  ],
-  chemistry: [
-    "Ideal Gas Law: PV = nRT where P is pressure, V is volume, n is moles, R is gas constant, T is temperature in Kelvin.",
-    "Avogadro's Number: 6.022 x 10^23 particles per mole.",
-    "pH Definition: pH = -log10[H+] measuring hydrogen ion concentration in solution.",
-    "Periodic Law: Physical and chemical properties of elements recur periodically when arranged by atomic number."
-  ],
-  general: [
-    "Socratic Method: Guided questioning technique to foster critical thinking and step-by-step problem solving.",
-    "Study Strategy: Active recall and spaced repetition yield optimal long-term memory retention."
-  ]
-};
+    // Percentage calculation like "15% of 200"
+    const pctMatch = cleaned.match(/^(\d+(?:\.\d+)?)\%\s*of\s*(\d+(?:\.\d+)?)$/i);
+    if (pctMatch) {
+      const pct = parseFloat(pctMatch[1]);
+      const base = parseFloat(pctMatch[2]);
+      const res = (pct / 100) * base;
+      return { directAnswer: `${pct}% of ${base} = ${res}`, value: res };
+    }
 
-function retrieveRAGContext(message: string, subject: string): string {
-  const norm = normalizeQuery(message);
-  const subjKey = normalizeQuery(subject);
-  const domainDocs = RAG_KNOWLEDGE_BASE[subjKey] || RAG_KNOWLEDGE_BASE['general'];
-  
-  const relevantDocs = domainDocs.filter(doc => {
-    const normDoc = normalizeQuery(doc);
-    const keywords = norm.split(' ').filter(w => w.length > 3);
-    return keywords.some(kw => normDoc.includes(kw));
-  });
-
-  if (relevantDocs.length === 0) {
-    return domainDocs.slice(0, 2).join('\n');
+    // Safe AST arithmetic evaluator
+    const val = safeEvaluateMath(cleaned);
+    if (val !== null) {
+      return { directAnswer: `${expr.trim()} = ${val}`, value: val };
+    }
+  } catch (err) {
+    // Ignore math eval errors
   }
-  return relevantDocs.join('\n');
+  return null;
 }
 
-// System Prompts & Helpers
-const SYSTEM_TUTOR_PROMPT = `You are StudyGenie AI, a world-class Socratic study tutor.
-Respond to student questions in clear, encouraging, and direct language.
+const SYSTEM_TUTOR_PROMPT = `
+You are StudyGenie AI, an elite Socratic AI Academic Tutor & STEM Specialist created to provide world-class educational guidance.
 
-CRITICAL INSTRUCTION FOR DIRECT ANSWERS & MATH:
-1. If the student asks a direct calculation, arithmetic, formula evaluation, or factual question (e.g., "2+5", "What is 15% of 80?", "Solve 3x + 5 = 11", "What is the speed of light?"), you MUST state the EXACT final calculated answer or direct solution at the VERY BEGINNING of "mainMessage" (e.g., "2 + 5 = 7").
-2. Never withhold the direct answer. State the result clearly first, then provide the step-by-step reasoning, key concepts, and Socratic reflection questions.
+PEDAGOGICAL & PROFESSIONAL RULES:
+1. **Accuracy & Precision**: Provide rigorous, mathematically and scientifically exact answers.
+2. **Socratic Guidance**: Explain concepts clearly, break down problems into logical steps, and prompt the student with thoughtful reflection questions.
+3. **Conversational Intelligence**: If the user input is a casual greeting or conversational phrase (e.g. "hi", "hii", "hello", "hey", "who are you", "thanks"), respond warmly and professionally, introduce yourself as StudyGenie AI Tutor, and ask how you can help them with their target subject. Do NOT force a complex mathematical formula on a simple greeting.
+4. **Mathematical Formatting**: Use LaTeX ($...$ for inline math equations, $$...$$ for block display formulas).
+5. **Structured JSON Output**: You MUST respond ONLY in raw, valid JSON matching this exact schema:
 
-Always return a VALID JSON object matching this schema strictly:
 {
-  "mainMessage": "Exact direct answer or result followed by a friendly explanation.",
+  "mainMessage": "Detailed, highly clear explanation of the topic or solution. Bold key terms and format math in LaTeX.",
   "responseType": "concept_explanation" | "problem_solving" | "homework_help" | "exam_prep",
-  "keyConcepts": ["Concept 1", "Concept 2", "Concept 3"],
-  "stepByStep": ["Step 1...", "Step 2...", "Step 3..."],
-  "checkQuestions": ["Question to check understanding 1", "Question 2"],
-  "memoryAids": ["Mnemonic or analogy to remember"],
-  "encouragement": "Supportive closing phrase"
-}`;
-
-const SYSTEM_QUIZ_PROMPT = `Generate a high-quality practice quiz.
-Return ONLY a JSON object with schema:
-{
-  "title": "Quiz Title",
-  "subject": "Subject Name",
-  "questions": [
-    {
-      "id": "q1",
-      "question": "Clear question text?",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correctIndex": 0,
-      "explanation": "Detailed explanation why this option is correct."
-    }
+  "keyConcepts": ["Specific Concept 1", "Specific Concept 2", "Specific Concept 3"],
+  "stepByStep": [
+    "Step 1: Clear, actionable explanation or calculation step",
+    "Step 2: Next logical step with formula/reasoning",
+    "Step 3: Conclusion or final formula"
+  ],
+  "checkQuestions": [
+    "Reflective inquiry question 1 testing comprehension",
+    "Reflective inquiry question 2 challenging edge cases"
+  ],
+  "memoryAids": [
+    "High-impact mnemonic, formula memory hook, or key takeaway"
   ]
-}`;
+}
 
-const SYSTEM_VISION_PROMPT = `Analyze the uploaded educational image (problem, diagram, textbook excerpt).
-Return ONLY a JSON object with schema:
-{
-  "title": "Identified Subject/Problem Title",
-  "summary": "Brief overview of what is in the image",
-  "extractedText": "Key text or equation transcribed",
-  "stepByStepSolution": ["Step 1", "Step 2", "Step 3"],
-  "keyTakeaways": ["Takeaway 1", "Takeaway 2"],
-  "relatedConcepts": ["Concept A", "Concept B"]
-}`;
+6. Do NOT enclose the JSON output in markdown backticks (such as \`\`\`json). Return pure JSON.
+`;
 
-const SYSTEM_SYLLABUS_PROMPT = `Analyze this course syllabus or textbook table of contents.
-Return ONLY a JSON object with schema:
-{
-  "courseTitle": "Extracted Course Title",
-  "summary": "Overview of course goals",
-  "modules": [
-    {
-      "week": 1,
-      "moduleName": "Module Name",
-      "topics": ["Topic 1", "Topic 2"],
-      "estimatedHours": 4,
-      "keyOutcome": "Learning objective"
-    }
-  ]
-}`;
+function generateSmartTutorFallback(message: string, subject: string, level: string, sessionType: string) {
+  const msgLower = message.toLowerCase().trim();
 
-// API Routes
-app.get('/api/health', (_req: Request, res: Response) => {
-  const hasKey = !!process.env.GEMINI_API_KEY;
-  res.json({ status: 'ok', service: 'StudyGenie AI Backend', geminiEnabled: hasKey });
-});
+  // Conversational / Greeting check
+  const isGreeting = /^(hi+|hello+|hey+|greetings|good\s*(morning|afternoon|evening)|who\s*are\s*you|what\s*can\s*you\s*do|help|thanks|thank\s*you)\s*[\!\?\.\]]*$/i.test(msgLower);
 
-// 1. AI Tutor Chat Endpoint
-app.post('/api/tutor', async (req: Request, res: Response) => {
-  const { message, subject = 'General', studentLevel = 'intermediate', sessionType = 'concept_explanation' } = req.body;
-
-  if (!message) {
-    return res.status(400).json({ success: false, error: 'Message is required' });
-  }
-
-  // Check Exact Hash Response Cache for Cross-Device Deterministic Consistency
-  const cacheKey = getCacheKey('tutor', subject, studentLevel, sessionType, message);
-  const cachedHit = responseCache.get(cacheKey);
-  if (cachedHit) {
-    return res.json({ success: true, data: cachedHit.data, cached: true, deterministic: true });
+  if (isGreeting) {
+    return {
+      mainMessage: `Hello Scholar! 👋 I am your **StudyGenie AI Tutor**.\n\nI am configured for **${subject}** (${level} level, ${sessionType.replace(/_/g, ' ')} mode).\n\nHow can I assist your study session today? You can ask me to explain any topic, solve complex equations, break down homework problems, or quiz your knowledge!`,
+      responseType: sessionType,
+      keyConcepts: [`${subject} Fundamentals`, 'Socratic Learning', 'Active Recall'],
+      stepByStep: [
+        `1. Confirm your desired Subject (${subject}) and Level above`,
+        `2. Type any topic, question, or formula (e.g., "Explain L'Hôpital's rule", "F=ma example", "2+5")`,
+        `3. Review step-by-step breakdowns and check questions to lock in your understanding`
+      ],
+      checkQuestions: [
+        `What specific topic or problem in ${subject} would you like to explore first?`,
+        `Would you prefer a conceptual explanation or a step-by-step numerical solution?`
+      ],
+      memoryAids: ['Active recall and explaining concepts in your own words is the fastest path to long-term memory retention!']
+    };
   }
 
   const mathEval = tryEvaluateSimpleMath(message);
-  const ragContext = retrieveRAGContext(message, subject);
 
+  if (mathEval) {
+    return {
+      mainMessage: `The calculated result is **${mathEval.directAnswer}**.\n\nHere is the step-by-step mathematical evaluation:`,
+      responseType: 'problem_solving',
+      keyConcepts: ['Arithmetic Evaluation', 'Order of Operations (PEMDAS)', 'Numerical Computation'],
+      stepByStep: [
+        `1. Parsed mathematical expression: $${message.trim()}$`,
+        `2. Evaluated arithmetic operations: $${mathEval.directAnswer}$`,
+        `3. Verified output value: **${mathEval.value}**`
+      ],
+      checkQuestions: [
+        `How would the result change if you doubled one of the terms?`,
+        `Can you express this arithmetic statement as a word problem?`
+      ],
+      memoryAids: ['PEMDAS Order: Parentheses → Exponents → Multiplication/Division → Addition/Subtraction']
+    };
+  }
+
+  if (msgLower.includes('l\'hopital') || msgLower.includes('lhopital') || msgLower.includes('limit') || msgLower.includes('derivative') || msgLower.includes('calculus')) {
+    return {
+      mainMessage: `### Calculus & Limits Analysis: **L'Hôpital's Rule & Derivatives**\n\nWhen evaluating a limit $\\lim_{x \\to a} \\frac{f(x)}{g(x)}$ that results in an indeterminate form such as $\\frac{0}{0}$ or $\\frac{\\infty}{\\infty}$, L'Hôpital's Rule allows us to take the derivatives of the numerator and denominator independently.`,
+      responseType: 'concept_explanation',
+      keyConcepts: ["L'Hôpital's Rule", "Indeterminate Forms (0/0, ∞/∞)", "Differentiability & Continuity"],
+      stepByStep: [
+        "Step 1: Check that $\\lim_{x \\to a} f(x) = 0$ and $\\lim_{x \\to a} g(x) = 0$ (or both approach $\\pm\\infty$).",
+        "Step 2: Differentiate numerator and denominator separately: $f'(x)$ and $g'(x)$.",
+        "Step 3: Evaluate the new limit: $$\\lim_{x \\to a} \\frac{f(x)}{g(x)} = \\lim_{x \\to a} \\frac{f'(x)}{g'(x)}$$"
+      ],
+      checkQuestions: [
+        "Why must you check for indeterminate forms before applying L'Hôpital's Rule?",
+        "What happens if the first application of L'Hôpital's Rule still yields 0/0?"
+      ],
+      memoryAids: ["Remember: Differentiate numerator and denominator separately, NEVER apply the quotient rule here!"]
+    };
+  }
+
+  if (msgLower.includes('newton') || msgLower.includes('force') || msgLower.includes('f=ma') || msgLower.includes('motion') || msgLower.includes('velocity') || msgLower.includes('physics')) {
+    return {
+      mainMessage: `### Physics & Classical Mechanics: **Newton's Laws of Motion**\n\nNewton's Second Law of Motion establishes that the acceleration ($a$) of an object is directly proportional to the net external force ($F$) applied, and inversely proportional to its mass ($m$).`,
+      responseType: 'problem_solving',
+      keyConcepts: ["Newton's Second Law ($F = m \\cdot a$)", "Inertia & Momentum", "Vector Net Force"],
+      stepByStep: [
+        "Step 1: Draw a Free-Body Diagram (FBD) listing all external forces acting on mass $m$.",
+        "Step 2: Apply Newton's Second Law equation: $$F_{\\text{net}} = m \\cdot a$$",
+        "Step 3: Solve for the target variable (force $N$, mass $kg$, or acceleration $m/s^2$)."
+      ],
+      checkQuestions: [
+        "If the net force on an object is zero, does that mean the object must be stationary?",
+        "How does doubling the mass affect acceleration if force remains constant?"
+      ],
+      memoryAids: ["F = m · a (Force in Newtons, Mass in kg, Acceleration in m/s²)"]
+    };
+  }
+
+  if (msgLower.includes('sn1') || msgLower.includes('sn2') || msgLower.includes('organic') || msgLower.includes('reaction') || msgLower.includes('chemistry') || msgLower.includes('nucleophile')) {
+    return {
+      mainMessage: `### Organic Chemistry: **Nucleophilic Substitution ($S_N1$ vs $S_N2$)**\n\n$S_N1$ and $S_N2$ are fundamental substitution mechanisms differing by steps, kinetics, substrate preference, and stereochemistry.`,
+      responseType: 'concept_explanation',
+      keyConcepts: ["$S_N1$ Unimolecular Kinetics", "$S_N2$ Concerted Backside Attack", "Carbocation Stability"],
+      stepByStep: [
+        "1. $S_N1$: Two-step process forming a carbocation intermediate ($3^\\circ > 2^\\circ > 1^\\circ$). Results in racemization.",
+        "2. $S_N2$: One-step concerted backside attack ($1^\\circ > 2^\\circ > 3^\\circ$). Results in Walden inversion.",
+        "3. Solvent Influence: Polar protic solvents favor $S_N1$; polar aprotic solvents favor $S_N2$."
+      ],
+      checkQuestions: [
+        "Why do tertiary alkyl halides prefer $S_N1$ over $S_N2$?",
+        "What stereochemical outcome do you expect from an $S_N2$ attack at a chiral center?"
+      ],
+      memoryAids: ["$S_N1$ = 2 Steps, Carbocation, $3^\\circ$. $S_N2$ = 1 Step, Inversion, $1^\\circ$."]
+    };
+  }
+
+  if (msgLower.includes('bfs') || msgLower.includes('dfs') || msgLower.includes('algorithm') || msgLower.includes('tree') || msgLower.includes('graph') || msgLower.includes('sorting') || msgLower.includes('code')) {
+    return {
+      mainMessage: `### Computer Science: **Graph Traversal (BFS vs DFS)**\n\nBreadth-First Search (BFS) and Depth-First Search (DFS) are fundamental algorithms for traversing tree and graph data structures.`,
+      responseType: 'concept_explanation',
+      keyConcepts: ["BFS (Queue / Level-Order)", "DFS (Stack / Recursion)", "Time Complexity $\\mathcal{O}(V + E)$"],
+      stepByStep: [
+        "1. **BFS**: Uses a Queue (FIFO). Explores neighbor nodes level-by-level. Ideal for finding shortest path in unweighted graphs.",
+        "2. **DFS**: Uses a Stack (LIFO / Recursion). Explores deeply along each branch before backtracking. Ideal for topological sort.",
+        "3. **Complexity**: Both require $\\mathcal{O}(V + E)$ time complexity."
+      ],
+      checkQuestions: [
+        "Which traversal algorithm uses a Queue, and why is it preferred for shortest paths?",
+        "What is the maximum recursion depth memory cost of DFS on a tree of height $h$?"
+      ],
+      memoryAids: ["BFS = Breadth (Queue / Level), DFS = Depth (Stack / Branch)"]
+    };
+  }
+
+  return {
+    mainMessage: `### ${subject} Inquiry: **Analytical Concept Breakdown**\n\nLet me guide you through the fundamental principles of **${message.trim()}** in ${subject} (${level} level).`,
+    responseType: sessionType,
+    keyConcepts: [`Core ${subject} Definitions`, "Analytical Scaffolding", "Socratic Inquiry"],
+    stepByStep: [
+      `1. **Define Core Terms**: Identify the primary parameters governing "${message.trim()}".`,
+      `2. **Establish Model**: Apply governing theories or formulas in ${subject}.`,
+      `3. **Synthesize Solution**: Verify logical consistency and draw conclusions.`
+    ],
+    checkQuestions: [
+      `What key assumptions are required for this ${subject} concept to hold true?`,
+      `Can you explain how this topic connects to practical applications?`
+    ],
+    memoryAids: ["Break complex topics into core definitions before solving detailed sub-problems."]
+  };
+}
+
+// AUTH ENDPOINTS
+
+app.post('/api/auth/register', (req: Request, res: Response) => {
+  const result = registerSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ success: false, error: result.error.issues[0].message });
+  }
+
+  const { email, password, name } = result.data;
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (existing) {
+    return res.status(400).json({ success: false, error: 'An account with this email already exists.' });
+  }
+
+  const userId = crypto.randomUUID();
+  const passwordHash = hashPassword(password);
+  const createdAt = new Date().toISOString();
+
+  db.prepare('INSERT INTO users (id, email, password_hash, name, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    userId, email, passwordHash, name, createdAt
+  );
+
+  const initialPerformance = [
+    { subject: 'Mathematics', score: 0, hoursSpent: 0 },
+    { subject: 'Physics', score: 0, hoursSpent: 0 },
+    { subject: 'Chemistry', score: 0, hoursSpent: 0 },
+    { subject: 'Biology', score: 0, hoursSpent: 0 },
+    { subject: 'Computer Science', score: 0, hoursSpent: 0 }
+  ];
+
+  db.prepare(`
+    INSERT INTO user_stats (user_id, streak_days, total_study_hours, cards_reviewed, quizzes_completed, average_quiz_score, subject_performance_json)
+    VALUES (?, 1, 0, 0, 0, 0, ?)
+  `).run(userId, JSON.stringify(initialPerformance));
+
+  const token = generateToken({ id: userId, email, name });
+  const csrfToken = generateCsrfToken();
+
+  res.cookie('studygenie_token', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+
+  res.cookie('_csrf', csrfToken, {
+    httpOnly: false,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+
+  res.json({ success: true, token, csrfToken, user: { id: userId, email, name } });
+});
+
+app.post('/api/auth/login', (req: Request, res: Response) => {
+  const result = loginSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ success: false, error: result.error.issues[0].message });
+  }
+
+  const { email, password } = result.data;
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+  if (!user || !comparePassword(password, user.password_hash)) {
+    return res.status(401).json({ success: false, error: 'Invalid email or password.' });
+  }
+
+  const token = generateToken({ id: user.id, email: user.email, name: user.name });
+  const csrfToken = generateCsrfToken();
+
+  res.cookie('studygenie_token', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+
+  res.cookie('_csrf', csrfToken, {
+    httpOnly: false,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+
+  res.json({ success: true, token, csrfToken, user: { id: user.id, email: user.email, name: user.name } });
+});
+
+app.post('/api/auth/logout', (_req: Request, res: Response) => {
+  res.clearCookie('studygenie_token');
+  res.clearCookie('_csrf');
+  res.json({ success: true, message: 'Logged out successfully.' });
+});
+
+app.get('/api/auth/me', authenticateUserToken as express.RequestHandler, (req: AuthenticatedRequest, res: Response) => {
+  if (!req.user) return res.status(401).json({ success: false, error: 'Not authenticated' });
+  const csrfToken = req.cookies ? req.cookies['_csrf'] : generateCsrfToken();
+  res.json({ success: true, user: req.user, csrfToken });
+});
+
+// API ENDPOINTS
+
+app.get('/api/health', async (_req: Request, res: Response) => {
+  const aiAvailable = !!process.env.GEMINI_API_KEY;
+  let activePingSuccess = false;
+
+  if (aiAvailable) {
+    try {
+      const ai = getGenAI();
+      if (ai) {
+        const pingRes = await ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: [{ role: 'user', parts: [{ text: 'ping' }] }]
+        });
+        activePingSuccess = !!pingRes.text;
+      }
+    } catch (err) {
+      activePingSuccess = false;
+    }
+  }
+
+  res.json({
+    status: 'online',
+    system: 'StudyGenie AI OS',
+    version: '1.0.0',
+    geminiActive: aiAvailable,
+    geminiPingSuccess: activePingSuccess,
+    geminiModel: GEMINI_MODEL,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// PROTECTED ENDPOINTS (Strict Authentication Enforced)
+
+app.post('/api/tutor', requireStrictAuth as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  const validation = tutorRequestSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({ success: false, error: validation.error.issues[0].message });
+  }
+
+  const userId = req.user!.id;
+  const quota = checkAndIncrementAIQuota(userId);
+  if (!quota.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: 'Daily AI usage quota exceeded (50 requests/day). Upgrade to Pro or try again tomorrow.'
+    });
+  }
+
+  const { message, subject, studentLevel, sessionType } = validation.data;
+  const mathEval = tryEvaluateSimpleMath(message);
   const ai = getGenAI();
+
   if (ai) {
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
+        model: GEMINI_MODEL,
         contents: [
-          { role: 'user', parts: [{ text: `${SYSTEM_TUTOR_PROMPT}\n\nSubject: ${subject}\nLevel: ${studentLevel}\nSession Type: ${sessionType}\nVerified RAG Context:\n${ragContext}\n\nStudent Question: ${message}${mathEval ? `\n(Note: Calculated Direct Math Solution: ${mathEval.directAnswer})` : ''}` }] }
+          { role: 'user', parts: [{ text: `${SYSTEM_TUTOR_PROMPT}\n\nSubject: ${subject}\nLevel: ${studentLevel}\nSession Type: ${sessionType}\nStudent Question: ${message}${mathEval ? `\n(Note: Calculated Direct Math Solution: ${mathEval.directAnswer})` : ''}` }] }
         ],
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.0, // Zero temperature greedy sampling for strict cross-device determinism
-          topP: 0.95
-        }
+        config: { responseMimeType: 'application/json' }
       });
 
       const text = response.text;
@@ -229,301 +536,518 @@ app.post('/api/tutor', async (req: Request, res: Response) => {
         if (mathEval && !parsed.mainMessage.includes(String(mathEval.value))) {
           parsed.mainMessage = `**${mathEval.directAnswer}**\n\n${parsed.mainMessage}`;
         }
-        // Save to deterministic server cache
-        responseCache.set(cacheKey, { data: parsed, timestamp: Date.now() });
-        return res.json({ success: true, data: parsed, cached: false, deterministic: true });
+        return res.json({ success: true, data: parsed, remainingQuota: quota.remaining });
       }
     } catch (err: any) {
-      console.warn('Gemini API call failed, using intelligent fallback:', err?.message || err);
+      console.warn('Gemini API call failed, using fallback:', err?.message || err);
     }
   }
 
-  // Fallback response generator
-  let fallbackData;
-  if (mathEval) {
-    fallbackData = {
-      mainMessage: `The answer is **${mathEval.directAnswer}**!`,
-      responseType: 'problem_solving',
-      keyConcepts: [
-        'Basic Arithmetic Operations',
-        'Order of Operations (PEMDAS)',
-        'Numerical Evaluation'
-      ],
-      stepByStep: [
-        `1. Identify the input expression: ${message}`,
-        `2. Perform the arithmetic calculation`,
-        `3. Final result: ${mathEval.directAnswer}`
-      ],
-      checkQuestions: [
-        `What would happen if you added 10 to this result?`,
-        `Can you write an equation that gives the same answer?`
-      ],
-      memoryAids: ['Arithmetic principle: Addition combines quantities into a single sum.'],
-      encouragement: 'Great job! Math fundamentals make complex problem solving easy.'
-    };
-  } else {
-    fallbackData = {
-      mainMessage: `Great question regarding **${subject}**! Let's break down "${message}" together.\n\n**Key Knowledge Context:**\n${ragContext}`,
-      responseType: sessionType,
-      keyConcepts: [
-        `Core principles of ${subject}`,
-        'Fundamental logic & problem structure',
-        'Practical application in real scenarios'
-      ],
-      stepByStep: [
-        `1. Identify the fundamental formula or concept behind ${message}`,
-        '2. Analyze the given parameters and requirements',
-        '3. Apply step-by-step logic to deduce the correct result'
-      ],
-      checkQuestions: [
-        `How would you describe ${message} in your own words?`,
-        'What is the most critical constraint or assumption here?'
-      ],
-      memoryAids: [`Recall: ${subject} problems always start with understanding key inputs!`],
-      encouragement: 'You are making steady progress! Keep up the curiosity.'
-    };
-  }
-
-  responseCache.set(cacheKey, { data: fallbackData, timestamp: Date.now() });
-  return res.json({ success: true, data: fallbackData, cached: false, deterministic: true });
+  const fallback = generateSmartTutorFallback(message, subject, studentLevel, sessionType);
+  return res.json({ success: true, data: fallback, remainingQuota: quota.remaining, degraded: true });
 });
 
-// 2. Generate Quiz Endpoint
-app.post('/api/quiz/generate', async (req: Request, res: Response) => {
-  const { topic, count = 5, subject = 'General', difficulty = 'Medium' } = req.body;
-
-  if (!topic) {
-    return res.status(400).json({ success: false, error: 'Topic is required' });
+app.post('/api/flashcards/generate', requireStrictAuth as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  const validation = flashcardGenSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({ success: false, error: validation.error.issues[0].message });
   }
 
-  // Cache check for deterministic quiz generation
-  const cacheKey = getCacheKey('quiz', subject, topic, difficulty, count);
-  const cachedHit = responseCache.get(cacheKey);
-  if (cachedHit) {
-    return res.json({ success: true, data: cachedHit.data, cached: true, deterministic: true });
+  const userId = req.user!.id;
+  const quota = checkAndIncrementAIQuota(userId);
+  if (!quota.allowed) {
+    return res.status(429).json({ success: false, error: 'Daily AI usage quota exceeded.' });
   }
 
-  const ragContext = retrieveRAGContext(topic, subject);
-
+  const { topic, count, subject } = validation.data;
   const ai = getGenAI();
+
   if (ai) {
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
+        model: GEMINI_MODEL,
         contents: [
-          { role: 'user', parts: [{ text: `${SYSTEM_QUIZ_PROMPT}\n\nGenerate a ${difficulty} difficulty quiz with ${count} questions for topic: "${topic}" in subject: "${subject}".\nVerified Knowledge Reference:\n${ragContext}` }] }
+          {
+            role: 'user',
+            parts: [{
+              text: `Generate a flashcard deck with exactly ${count} cards on topic "${topic}" in subject "${subject}".
+Return raw JSON in this format:
+{
+  "title": "Deck Title",
+  "description": "Short summary",
+  "cards": [
+    {
+      "front": "Question/Prompt",
+      "back": "Detailed answer with LaTeX if math",
+      "hint": "Optional hint",
+      "category": "${topic}"
+    }
+  ]
+}`
+            }]
+          }
         ],
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.0, // Deterministic greedy decoding
-          topP: 0.95
-        }
+        config: { responseMimeType: 'application/json' }
       });
 
       if (response.text) {
         const parsed = JSON.parse(response.text);
-        responseCache.set(cacheKey, { data: parsed, timestamp: Date.now() });
-        return res.json({ success: true, data: parsed, cached: false, deterministic: true });
+        return res.json({ success: true, data: parsed, remainingQuota: quota.remaining });
       }
     } catch (err: any) {
-      console.warn('Quiz AI generation failed, using fallback:', err?.message || err);
+      console.warn('Flashcard generation API call failed, using fallback:', err?.message || err);
     }
   }
 
-  // Fallback Quiz Generator
-  const fallbackQuiz = {
-    title: `${topic} Master Quiz`,
-    subject,
-    questions: [
-      {
-        id: 'q1',
-        question: `What is the primary objective when studying ${topic}?`,
-        options: [
-          `To understand the core principles and relationships in ${topic}`,
-          `To memorize unrelated equations without application`,
-          `To ignore the underlying theoretical framework`,
-          `None of the above`
-        ],
-        correctIndex: 0,
-        explanation: `Mastering ${topic} requires a firm grasp of underlying concepts and their interconnections.`
-      },
-      {
-        id: 'q2',
-        question: `Which of the following best describes a key property of ${topic}?`,
-        options: [
-          `Static and non-interacting`,
-          `Dynamic and foundational to ${subject}`,
-          `Purely theoretical with no practical use`,
-          `Applicable only in laboratory settings`
-        ],
-        correctIndex: 1,
-        explanation: `${topic} provides essential tools for understanding dynamic systems in ${subject}.`
-      },
-      {
-        id: 'q3',
-        question: `When solving problems in ${topic}, what is recommended as the first step?`,
-        options: [
-          `Jump straight to final calculation`,
-          `Draw a diagram or list given information and goal variables`,
-          `Guess the answer based on past intuition`,
-          `Skip definition check`
-        ],
-        correctIndex: 1,
-        explanation: `Listing known variables and sketching the problem structure prevents calculation errors.`
-      }
-    ]
-  };
-
-  responseCache.set(cacheKey, { data: fallbackQuiz, timestamp: Date.now() });
-  res.json({ success: true, data: fallbackQuiz, cached: false, deterministic: true });
+  return res.json({
+    success: true,
+    data: {
+      title: `${topic} Flashcards`,
+      description: `Active recall study deck for ${topic} (${subject})`,
+      cards: Array.from({ length: count }).map((_, i) => ({
+        front: `What is Key Concept #${i + 1} of ${topic}?`,
+        back: `Explanation for concept #${i + 1}: ${topic} involves fundamental laws and core mechanisms.`,
+        hint: `Think about core principles of ${topic}.`,
+        category: topic
+      }))
+    },
+    remainingQuota: quota.remaining,
+    degraded: true
+  });
 });
 
-// 4. Snap & Solve Image Analysis Endpoint
-app.post('/api/vision/analyze', async (req: Request, res: Response) => {
-  const { imageBase64, prompt = 'Solve and explain this problem step by step.' } = req.body;
-
-  if (!imageBase64) {
-    return res.status(400).json({ success: false, error: 'Image data is required' });
+app.post('/api/quiz/generate', requireStrictAuth as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  const validation = quizGenSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({ success: false, error: validation.error.issues[0].message });
   }
 
+  const userId = req.user!.id;
+  const quota = checkAndIncrementAIQuota(userId);
+  if (!quota.allowed) {
+    return res.status(429).json({ success: false, error: 'Daily AI usage quota exceeded.' });
+  }
+
+  const { topic, count, subject, difficulty } = validation.data;
   const ai = getGenAI();
+
   if (ai) {
     try {
-      // Strip base64 prefix if present
-      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      const mimeMatch = imageBase64.match(/^data:(image\/\w+);base64,/);
-      const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [
+          {
+            role: 'user',
+            parts: [{
+              text: `Generate a multiple choice quiz with exactly ${count} questions for topic "${topic}" (${subject}, Difficulty: ${difficulty}).
+Return raw JSON in this format:
+{
+  "title": "${topic} Quiz",
+  "questions": [
+    {
+      "question": "Question text?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctIndex": 0,
+      "explanation": "Why option A is correct"
+    }
+  ]
+}`
+            }]
+          }
+        ],
+        config: { responseMimeType: 'application/json' }
+      });
+
+      if (response.text) {
+        const parsed = JSON.parse(response.text);
+        return res.json({ success: true, data: parsed, remainingQuota: quota.remaining });
+      }
+    } catch (err: any) {
+      console.warn('Quiz generation API call failed, using fallback:', err?.message || err);
+    }
+  }
+
+  return res.json({
+    success: true,
+    data: {
+      title: `${topic} Practice Quiz`,
+      questions: [
+        {
+          question: `Which statement is true regarding ${topic}?`,
+          options: [`${topic} is governed by standard principles`, 'It violates energy conservation', 'It only applies at absolute zero', 'It is non-repeatable'],
+          correctIndex: 0,
+          explanation: `${topic} follows standard academic principles in ${subject}.`
+        }
+      ]
+    },
+    remainingQuota: quota.remaining,
+    degraded: true
+  });
+});
+
+app.post('/api/vision/analyze', requireStrictAuth as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  const validation = visionAnalyzeSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({ success: false, error: validation.error.issues[0].message });
+  }
+
+  const userId = req.user!.id;
+  const quota = checkAndIncrementAIQuota(userId);
+  if (!quota.allowed) {
+    return res.status(429).json({ success: false, error: 'Daily AI usage quota exceeded.' });
+  }
+
+  const { imageBase64, prompt } = validation.data;
+  const ai = getGenAI();
+
+  if (ai) {
+    try {
+      const mimeTypeMatch = imageBase64.match(/^data:(image\/[a-zA-Z]+);base64,/);
+      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
+      const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
+        model: GEMINI_MODEL,
         contents: [
           {
             role: 'user',
             parts: [
-              { inlineData: { mimeType, data: cleanBase64 } },
-              { text: `${SYSTEM_VISION_PROMPT}\n\nAdditional Instruction: ${prompt}` }
+              { inlineData: { data: cleanBase64, mimeType } },
+              {
+                text: `Analyze this image for study notes or exam problems. ${prompt || ''}
+Return raw JSON in this format:
+{
+  "title": "Problem Title",
+  "summary": "Brief problem summary",
+  "extractedText": "Transcribed text from image",
+  "stepByStepSolution": ["Step 1", "Step 2"],
+  "keyTakeaways": ["Takeaway 1"],
+  "relatedConcepts": ["Concept 1"]
+}`
+              }
             ]
           }
         ],
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.0,
-          topP: 0.95
-        }
+        config: { responseMimeType: 'application/json' }
       });
 
       if (response.text) {
         const parsed = JSON.parse(response.text);
-        return res.json({ success: true, data: parsed, deterministic: true });
+        return res.json({ success: true, data: parsed, remainingQuota: quota.remaining });
       }
     } catch (err: any) {
-      console.warn('Vision AI analysis failed, using fallback:', err?.message || err);
+      console.warn('Vision API call failed, using fallback:', err?.message || err);
     }
   }
 
-  // Fallback Vision Response
-  res.json({
+  return res.json({
     success: true,
     data: {
       title: 'Scanned Problem Analysis',
-      summary: 'Image processed successfully. Detected mathematical & conceptual text.',
-      extractedText: 'Sample equation/problem transcribed from uploaded image.',
-      stepByStepSolution: [
-        'Step 1: Identify given equations and variable constraints from the image.',
-        'Step 2: Apply appropriate transformation rules and fundamental formulas.',
-        'Step 3: Simplify algebraic expressions to obtain final verified answer.'
-      ],
-      keyTakeaways: [
-        'Always double-check unit conversions when solving physics/math equations.',
-        'Pay close attention to initial sign conventions and boundaries.'
-      ],
-      relatedConcepts: ['Algebraic Simplification', 'Conceptual Graphing', 'Problem Decomposition']
-    }
+      summary: 'Extracted problem breakdown and step-by-step solution.',
+      extractedText: 'Problem transcribed from uploaded image.',
+      stepByStepSolution: ['1. Identify given variables', '2. Apply relevant equations', '3. Solve for unknown target variable'],
+      keyTakeaways: ['Verify units before final calculation.'],
+      relatedConcepts: ['Problem Solving Methodology']
+    },
+    remainingQuota: quota.remaining,
+    degraded: true
   });
 });
 
-// 5. Syllabus Analysis Endpoint
-app.post('/api/syllabus/analyze', async (req: Request, res: Response) => {
-  const { text, courseTitle = 'Course Syllabus' } = req.body;
-
-  if (!text) {
-    return res.status(400).json({ success: false, error: 'Syllabus content is required' });
+app.post('/api/syllabus/analyze', requireStrictAuth as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  const validation = syllabusAnalyzeSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({ success: false, error: validation.error.issues[0].message });
   }
 
-  const cacheKey = getCacheKey('syllabus', courseTitle, text);
-  const cachedHit = responseCache.get(cacheKey);
-  if (cachedHit) {
-    return res.json({ success: true, data: cachedHit.data, cached: true, deterministic: true });
+  const userId = req.user!.id;
+  const quota = checkAndIncrementAIQuota(userId);
+  if (!quota.allowed) {
+    return res.status(429).json({ success: false, error: 'Daily AI usage quota exceeded.' });
   }
 
+  const { text, courseTitle } = validation.data;
   const ai = getGenAI();
+
   if (ai) {
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
+        model: GEMINI_MODEL,
         contents: [
-          { role: 'user', parts: [{ text: `${SYSTEM_SYLLABUS_PROMPT}\n\nCourse Title: ${courseTitle}\n\nSyllabus Content:\n${text}` }] }
+          {
+            role: 'user',
+            parts: [{
+              text: `Parse this syllabus into a structured weekly breakdown for course "${courseTitle || 'Course'}":
+${text}
+
+Return raw JSON:
+{
+  "courseTitle": "Course Title",
+  "summary": "Summary",
+  "modules": [
+    {
+      "week": 1,
+      "moduleName": "Module Name",
+      "topics": ["Topic 1", "Topic 2"],
+      "estimatedHours": 4,
+      "keyOutcome": "Outcome"
+    }
+  ]
+}`
+            }]
+          }
         ],
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.0,
-          topP: 0.95
-        }
+        config: { responseMimeType: 'application/json' }
       });
 
       if (response.text) {
         const parsed = JSON.parse(response.text);
-        responseCache.set(cacheKey, { data: parsed, timestamp: Date.now() });
-        return res.json({ success: true, data: parsed, cached: false, deterministic: true });
+        return res.json({ success: true, data: parsed, remainingQuota: quota.remaining });
       }
     } catch (err: any) {
-      console.warn('Syllabus AI analysis failed, using fallback:', err?.message || err);
+      console.warn('Syllabus API call failed, using fallback:', err?.message || err);
     }
   }
 
-  // Fallback Syllabus Breakdown
-  res.json({
+  return res.json({
     success: true,
     data: {
-      courseTitle,
+      courseTitle: courseTitle || 'Structured Course Roadmap',
       summary: 'Automated study schedule constructed from course content.',
       modules: [
         {
           week: 1,
           moduleName: 'Foundations & Principles',
-          topics: ['Introduction to Core Definitions', 'Historical Context & Terminology'],
+          topics: ['Introduction to Core Definitions', 'Terminology'],
           estimatedHours: 4,
-          keyOutcome: 'Master baseline vocabulary and core assumptions'
-        },
-        {
-          week: 2,
-          moduleName: 'Intermediate Concepts & Applications',
-          topics: ['Analytical Frameworks', 'Problem Solving Techniques'],
-          estimatedHours: 5,
-          keyOutcome: 'Apply formulas to practical study problems'
-        },
-        {
-          week: 3,
-          moduleName: 'Advanced Synthesis & Review',
-          topics: ['Complex Case Studies', 'Comprehensive Exam Preparation'],
-          estimatedHours: 6,
-          keyOutcome: 'Achieve total mastery and exam readiness'
+          keyOutcome: 'Master baseline vocabulary'
         }
       ]
-    }
+    },
+    remainingQuota: quota.remaining,
+    degraded: true
   });
 });
 
+// MULTI-TENANT DATABASE REST API ENDPOINTS (IDOR Protected with Ownership Verification)
+
+app.get('/api/db/data', requireStrictAuth as express.RequestHandler, (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
+  const limit = Number(req.query.limit) || 50;
+  const offset = Number(req.query.offset) || 0;
+
+  const statsRow = db.prepare('SELECT * FROM user_stats WHERE user_id = ?').get(userId) as any;
+  const userStats = statsRow ? {
+    streakDays: statsRow.streak_days,
+    totalStudyHours: statsRow.total_study_hours,
+    cardsReviewed: statsRow.cards_reviewed,
+    quizzesCompleted: statsRow.quizzes_completed,
+    averageQuizScore: statsRow.average_quiz_score,
+    subjectPerformance: JSON.parse(statsRow.subject_performance_json || '[]')
+  } : null;
+
+  const decksRows = db.prepare('SELECT * FROM decks WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(userId, limit, offset) as any[];
+  const decks = decksRows.map((d) => {
+    const cardsRows = db.prepare('SELECT * FROM flashcards WHERE deck_id = ?').all(d.id) as any[];
+    return {
+      id: d.id,
+      title: d.title,
+      description: d.description,
+      subject: d.subject,
+      createdAt: d.created_at,
+      cards: cardsRows.map((c) => ({
+        id: c.id,
+        front: c.front,
+        back: c.back,
+        hint: c.hint,
+        category: c.category,
+        repetition: c.repetition,
+        easeFactor: c.ease_factor,
+        interval: c.interval,
+        nextReviewDate: c.next_review_date,
+        lastReviewed: c.last_reviewed,
+        mastered: Boolean(c.mastered)
+      }))
+    };
+  });
+
+  const quizzesRows = db.prepare('SELECT * FROM quizzes WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(userId, limit, offset) as any[];
+  const quizzes = quizzesRows.map((q) => ({
+    id: q.id,
+    title: q.title,
+    subject: q.subject,
+    difficulty: q.difficulty,
+    questions: JSON.parse(q.questions_json || '[]')
+  }));
+
+  const activitiesRows = db.prepare('SELECT * FROM activities WHERE user_id = ? ORDER BY id DESC LIMIT 20').all(userId) as any[];
+  const activities = activitiesRows.map((a) => ({
+    id: a.id,
+    type: a.type,
+    title: a.title,
+    timestamp: a.timestamp,
+    score: a.score
+  }));
+
+  res.json({
+    success: true,
+    data: { userStats, decks, quizzes, activities }
+  });
+});
+
+app.put('/api/db/stats', requireStrictAuth as express.RequestHandler, (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
+  const updates = req.body;
+
+  const existing = db.prepare('SELECT * FROM user_stats WHERE user_id = ?').get(userId) as any;
+  if (!existing) {
+    db.prepare(`
+      INSERT INTO user_stats (user_id, streak_days, total_study_hours, cards_reviewed, quizzes_completed, average_quiz_score, subject_performance_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      userId,
+      updates.streakDays || 1,
+      updates.totalStudyHours || 0,
+      updates.cardsReviewed || 0,
+      updates.quizzesCompleted || 0,
+      updates.averageQuizScore || 0,
+      JSON.stringify(updates.subjectPerformance || [])
+    );
+  } else {
+    db.prepare(`
+      UPDATE user_stats
+      SET streak_days = ?, total_study_hours = ?, cards_reviewed = ?, quizzes_completed = ?, average_quiz_score = ?, subject_performance_json = ?
+      WHERE user_id = ?
+    `).run(
+      updates.streakDays ?? existing.streak_days,
+      updates.totalStudyHours ?? existing.total_study_hours,
+      updates.cardsReviewed ?? existing.cards_reviewed,
+      updates.quizzesCompleted ?? existing.quizzes_completed,
+      updates.averageQuizScore ?? existing.average_quiz_score,
+      JSON.stringify(updates.subjectPerformance || JSON.parse(existing.subject_performance_json || '[]')),
+      userId
+    );
+  }
+
+  res.json({ success: true });
+});
+
+app.post('/api/db/decks', requireStrictAuth as express.RequestHandler, (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
+  const newDeck = req.body;
+  const deckId = crypto.randomUUID();
+
+  db.prepare(`
+    INSERT INTO decks (id, user_id, title, description, subject, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(deckId, userId, newDeck.title, newDeck.description || '', newDeck.subject || 'General', new Date().toISOString());
+
+  const createdCards: any[] = [];
+  if (Array.isArray(newDeck.cards)) {
+    const insertCard = db.prepare(`
+      INSERT INTO flashcards (id, deck_id, front, back, hint, category, repetition, ease_factor, interval, next_review_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const card of newDeck.cards) {
+      const cardId = crypto.randomUUID();
+      insertCard.run(
+        cardId,
+        deckId,
+        card.front,
+        card.back,
+        card.hint || '',
+        card.category || '',
+        card.repetition || 0,
+        card.easeFactor || 2.5,
+        card.interval || 0,
+        card.nextReviewDate || new Date().toISOString()
+      );
+      createdCards.push({ ...card, id: cardId, deckId });
+    }
+  }
+
+  res.json({ success: true, data: { ...newDeck, id: deckId, cards: createdCards } });
+});
+
+// Strict IDOR Protection on SM-2 Updates
+app.put('/api/db/decks/:deckId/cards/:cardId/sm2', requireStrictAuth as express.RequestHandler, (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
+  const { deckId, cardId } = req.params;
+  const sm2Data = req.body;
+
+  const result = db.prepare(`
+    UPDATE flashcards
+    SET repetition = ?, ease_factor = ?, interval = ?, next_review_date = ?, last_reviewed = ?, mastered = ?
+    WHERE id = ?
+      AND deck_id = ?
+      AND deck_id IN (SELECT id FROM decks WHERE user_id = ?)
+  `).run(
+    sm2Data.repetition,
+    sm2Data.easeFactor,
+    sm2Data.interval,
+    sm2Data.nextReviewDate,
+    sm2Data.lastReviewed,
+    sm2Data.mastered ? 1 : 0,
+    cardId,
+    deckId,
+    userId
+  );
+
+  if (result.changes === 0) {
+    return res.status(404).json({ success: false, error: 'Flashcard or deck not found' });
+  }
+
+  res.json({ success: true });
+});
+
+app.post('/api/db/quizzes', requireStrictAuth as express.RequestHandler, (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
+  const newQuiz = req.body;
+  const quizId = crypto.randomUUID();
+
+  db.prepare(`
+    INSERT INTO quizzes (id, user_id, title, subject, difficulty, questions_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    quizId,
+    userId,
+    newQuiz.title,
+    newQuiz.subject || 'General',
+    newQuiz.difficulty || 'Medium',
+    JSON.stringify(newQuiz.questions || []),
+    new Date().toISOString()
+  );
+
+  res.json({ success: true, data: { ...newQuiz, id: quizId } });
+});
+
+app.post('/api/db/activities', requireStrictAuth as express.RequestHandler, (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
+  const activity = req.body;
+  const actId = crypto.randomUUID();
+
+  db.prepare(`
+    INSERT INTO activities (id, user_id, type, title, timestamp, score)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(actId, userId, activity.type, activity.title, activity.timestamp || 'Just now', activity.score || '');
+
+  res.json({ success: true, data: { ...activity, id: actId } });
+});
+
+// Export app instance for Vitest integration testing
+export { app };
+
 // Vite Development Integration / Production Static Server
 async function setupServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VITEST) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (process.env.NODE_ENV === 'production') {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req: Request, res: Response) => {
@@ -531,9 +1055,11 @@ async function setupServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 StudyGenie AI server running on http://0.0.0.0:${PORT}`);
-  });
+  if (!process.env.VITEST) {
+    app.listen(PORT, () => {
+      console.log(`🚀 StudyGenie AI backend running on http://localhost:${PORT}`);
+    });
+  }
 }
 
 setupServer().catch((err) => {
