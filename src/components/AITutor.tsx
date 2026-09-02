@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, Subject, StudentLevel, SessionType } from '../types';
+import { MathRenderer } from './MathRenderer';
 import { 
   Bot, 
   Send, 
@@ -10,8 +11,6 @@ import {
   Copy, 
   RefreshCw,
   BookOpen,
-  HelpCircle,
-  BrainCircuit,
   Mic,
   MicOff
 } from 'lucide-react';
@@ -142,7 +141,8 @@ export const AITutor: React.FC = () => {
         setIsSpeaking(false);
         return;
       }
-      const utterance = new SpeechSynthesisUtterance(text);
+      const cleanText = text.replace(/<[^>]*>?/gm, '').replace(/[\$\#\*]/g, '');
+      const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.onend = () => setIsSpeaking(false);
       setIsSpeaking(true);
       window.speechSynthesis.speak(utterance);
@@ -251,7 +251,7 @@ export const AITutor: React.FC = () => {
             {msg.sender === 'user' && (
               <div className="max-w-2xl bg-indigo-600 text-white rounded-2xl rounded-tr-none p-4 shadow-lg space-y-1">
                 <p className="text-sm font-medium whitespace-pre-wrap">{msg.text}</p>
-                <div className="flex items-center justify-end gap-2 text-[10px] text-indigo-200 opacity-80">
+                <div className="flex items-center justify-end gap-2 text-[10px] text-indigo-200 opacity-80 font-semibold">
                   <span>{msg.subject}</span>
                   <span>•</span>
                   <span>{msg.timestamp}</span>
@@ -299,7 +299,7 @@ export const AITutor: React.FC = () => {
 
                 {/* Main Explanation Message */}
                 <div className="text-slate-100 text-sm leading-relaxed space-y-2">
-                  <p>{msg.structuredData?.mainMessage || msg.text}</p>
+                  <MathRenderer content={msg.structuredData?.mainMessage || msg.text} />
                 </div>
 
                 {/* Key Concepts Pills */}
@@ -332,7 +332,9 @@ export const AITutor: React.FC = () => {
                           <span className="w-5 h-5 rounded-full bg-indigo-600/30 border border-indigo-500/40 text-indigo-200 flex items-center justify-center shrink-0 font-bold text-[10px] mt-0.5">
                             {idx + 1}
                           </span>
-                          <span className="leading-relaxed">{step}</span>
+                          <span className="leading-relaxed">
+                            <MathRenderer content={step.replace(/^(\d+[\.\)]\s*|step\s*\d+:\s*)/i, '')} />
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -345,8 +347,8 @@ export const AITutor: React.FC = () => {
                     <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-start gap-2.5">
                       <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                       <div>
-                        <span className="text-[11px] font-bold text-amber-400 block">Memory Tip / Analogy</span>
-                        <p className="text-xs text-amber-200/90">{msg.structuredData.memoryAids[0]}</p>
+                        <span className="text-[11px] font-bold text-amber-400 block">Memory Aid & Mnemonic</span>
+                        <p className="text-xs text-amber-200/90">{msg.structuredData.memoryAids.join(' • ')}</p>
                       </div>
                     </div>
                   )}
@@ -377,10 +379,10 @@ export const AITutor: React.FC = () => {
       </div>
 
       {/* Input Bar */}
-      <div className="sticky bottom-4 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-2 shadow-2xl flex items-center gap-1.5 sm:gap-2">
+      <div className="sticky bottom-4 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-2 shadow-2xl flex items-center gap-2">
         <button
           onClick={handleListen}
-          className={`p-2 sm:p-2.5 rounded-xl border text-xs transition-all shrink-0 ${
+          className={`p-2.5 rounded-xl border text-xs transition-all ${
             isListening
               ? 'bg-red-500/20 border-red-500/50 text-red-400 animate-pulse'
               : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
@@ -394,15 +396,15 @@ export const AITutor: React.FC = () => {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder={`Ask anything... (e.g. "2+5", "Explain calculus")`}
-          className="flex-1 bg-transparent px-2 sm:px-3 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none min-w-0"
+          placeholder={`Ask anything... (e.g. "2+5", "Explain calculus derivatives")`}
+          className="flex-1 bg-transparent px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none"
         />
         <button
           onClick={() => handleSend()}
           disabled={!input.trim() || loading}
-          className="px-3 sm:px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 shrink-0"
+          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-semibold text-sm rounded-xl shadow-md transition-all flex items-center gap-2 shrink-0"
         >
-          <span className="hidden sm:inline">Ask</span>
+          <span>Ask</span>
           <Send className="w-4 h-4" />
         </button>
       </div>
