@@ -501,13 +501,13 @@ app.get('/api/health', async (_req: Request, res: Response) => {
 
 // PROTECTED ENDPOINTS (Strict Authentication Enforced)
 
-app.post('/api/tutor', requireStrictAuth as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/tutor', authenticateUserToken as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   const validation = tutorRequestSchema.safeParse(req.body);
   if (!validation.success) {
     return res.status(400).json({ success: false, error: validation.error.issues[0].message });
   }
 
-  const userId = req.user!.id;
+  const userId = req.user ? req.user.id : 'user-demo-default';
   const quota = checkAndIncrementAIQuota(userId);
   if (!quota.allowed) {
     return res.status(429).json({
