@@ -78,8 +78,8 @@ export function verifyCsrfToken(req: AuthenticatedRequest, res: Response, next: 
     return next();
   }
 
-  // Skip CSRF check for auth login/register endpoints
-  if (req.path.startsWith('/api/auth/login') || req.path.startsWith('/api/auth/register')) {
+  // Skip CSRF check for auth login/register and AI tutor endpoints
+  if (req.path.startsWith('/api/auth/login') || req.path.startsWith('/api/auth/register') || req.path.startsWith('/api/tutor')) {
     return next();
   }
 

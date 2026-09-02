@@ -22,7 +22,7 @@ function autoDetectSubject(text: string): Subject {
   if (/\b(cell|dna|rna|biology|photosynthesis|gene|organism|protein|enzyme)\b/.test(t)) return 'Biology';
   if (/\b(bfs|dfs|algorithm|graph|tree|queue|stack|code|programming|computer|array)\b/.test(t)) return 'Computer Science';
   if (/\b(war|revolution|century|history|empire|king|president|treaty)\b/.test(t)) return 'History';
-  if (/\b(math|calculus|derivative|limit|integral|equation|sqrt|square|root|sum|plus|\+|-|\*|\/)\b/.test(t)) return 'Mathematics';
+  if (/\b(math|calculus|derivative|limit|integral|equation|sqrt|squareroot|square|root|sum|plus|\+|-|\*|\/)\b/.test(t) || /sq[ua]{2}re\s*root|squareroot|sqrt|root/.test(t)) return 'Mathematics';
   return 'General Science';
 }
 
@@ -48,7 +48,40 @@ function generateClientTutorFallback(message: string, subject: string) {
     };
   }
 
-  // 2. Arithmetic / Math (e.g. 2+5, sqrt(16), etc.)
+  // 2. Square Root handling (e.g. squareroot(97), square root of 21/100, sqrt(16))
+  const sqrtMatch = msgLower.match(/^(?:sq[ua]{2}re\s*root|squareroot|sqaure-root|square-root|sqrt|root)\s*(?:of)?\s*\(?\s*([0-9\.\/\s\+\-\*]+)\s*\)?$/i);
+  if (sqrtMatch) {
+    const innerStr = sqrtMatch[1].trim();
+    let innerValue: number;
+    if (innerStr.includes('/')) {
+      const [num, den] = innerStr.split('/').map(s => parseFloat(s.trim()));
+      innerValue = num / den;
+    } else {
+      innerValue = parseFloat(innerStr);
+    }
+
+    if (!isNaN(innerValue) && innerValue >= 0) {
+      const val = Math.sqrt(innerValue);
+      const formattedVal = Number.isInteger(val) ? val.toString() : val.toFixed(4);
+      return {
+        mainMessage: `The calculated result is **$\\sqrt{${innerStr}} = ${formattedVal}$**.\n\nHere is the step-by-step radical evaluation:`,
+        keyConcepts: ['Square Root Property', 'Radical Simplification', 'Numerical Approximations'],
+        stepByStep: [
+          `1. Parsed mathematical radical: $\\sqrt{${innerStr}}$`,
+          `2. Evaluated square root computation: $\\sqrt{${innerStr}} = ${formattedVal}$`,
+          `3. Exact decimal representation: **${val}**`
+        ],
+        checkQuestions: [
+          `Why does $\\sqrt{x}$ only yield real numbers for non-negative values ($x \\ge 0$)?`,
+          `What is the relationship between taking the square root and raising a number to exponent 1/2?`
+        ],
+        memoryAids: ['Radical Exponent Rule: $\\sqrt[n]{x} = x^{\\frac{1}{n}}$'],
+        encouragement: 'Excellent mathematical radical computation!'
+      };
+    }
+  }
+
+  // 3. Basic Arithmetic / Math (e.g. 2+5)
   if (/^[0-9\.\s\+\-\*\/\(\)\^]+$/.test(msgLower) && /[0-9]/.test(msgLower)) {
     try {
       const safeExpr = msgLower.replace(/\^/g, '**');

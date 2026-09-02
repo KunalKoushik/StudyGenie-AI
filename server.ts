@@ -162,8 +162,8 @@ function tryEvaluateSimpleMath(expr: string): { directAnswer: string; value: num
       .replace(/=/g, '')
       .trim();
 
-    // Square root calculation like "sqaure root of 21/100" or "sqrt(16)"
-    const sqrtMatch = cleaned.match(/^(?:sqaure\s*root|square\s*root|sqrt|root)\s*(?:of)?\s*\(?\s*([0-9\.\/\s\+\-\*]+)\s*\)?$/i);
+    // Square root calculation like "squareroot(97)", "sqaure root of 21/100", or "sqrt(16)"
+    const sqrtMatch = cleaned.match(/^(?:sq[ua]{2}re\s*root|squareroot|sqaure-root|square-root|sqrt|root)\s*(?:of)?\s*\(?\s*([0-9\.\/\s\+\-\*]+)\s*\)?$/i);
     if (sqrtMatch) {
       const innerStr = sqrtMatch[1].trim();
       let innerValue: number;
