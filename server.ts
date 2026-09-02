@@ -319,6 +319,42 @@ function generateSmartTutorFallback(message: string, subject: string, level: str
     };
   }
 
+  if (msgLower.includes('polymer') || msgLower.includes('monomer') || msgLower.includes('plastic')) {
+    return {
+      mainMessage: `### Chemistry & Materials Science: **Polymers & Monomers**\n\nA **polymer** is a large macromolecule composed of repeating structural units called **monomers**, connected by covalent chemical bonds.\n\n### Classification of Polymers:\n- **Natural Polymers**: DNA, proteins (amino acid polymers), cellulose, starch, and natural rubber.\n- **Synthetic Polymers**: Polyethylene (plastics), Nylon, PVC (polyvinyl chloride), Teflon, and Kevlar.`,
+      responseType: 'concept_explanation',
+      keyConcepts: ['Polymers & Monomers', 'Polymerization (Addition & Condensation)', 'Thermoplastics vs Thermosets'],
+      stepByStep: [
+        '1. **Monomer Building Blocks**: Small reactive molecules (monomers) join together in long repeating chains.',
+        '2. **Polymerization Reactions**: Monomers undergo addition (chain-growth) or condensation (step-growth) reactions.',
+        '3. **Structure & Properties**: Polymer chain length, branching, and cross-linking determine flexibility, strength, and thermal melting point.'
+      ],
+      checkQuestions: [
+        'What is the fundamental difference between addition polymerization and condensation polymerization?',
+        'Why do thermosetting plastics retain their shape when heated, whereas thermoplastics melt and can be reshaped?'
+      ],
+      memoryAids: ['Polymer = "Poly" (Many) + "Mer" (Parts). Long chains of repeating monomer parts!']
+    };
+  }
+
+  if (msgLower.includes('photosynthesis') || msgLower.includes('chlorophyll') || msgLower.includes('plant')) {
+    return {
+      mainMessage: `### Biology & Biochemistry: **Photosynthesis**\n\n**Photosynthesis** is the biological process by which autotrophic organisms (plants, algae, and cyanobacteria) convert light energy into chemical energy stored in glucose.\n\n### Overall Chemical Equation:\n$$6\\text{CO}_2 + 6\\text{H}_2\\text{O} \\xrightarrow{\\text{Light}} \\text{C}_6\\text{H}_{12}\\text{O}_6 + 6\\text{O}_2$$`,
+      responseType: 'concept_explanation',
+      keyConcepts: ['Light-Dependent Reactions (Thylakoids)', 'Calvin Cycle (Stroma)', 'Chlorophyll & Energy Storage'],
+      stepByStep: [
+        '1. **Light Reactions**: Chlorophyll absorbs solar photons in thylakoid membranes, splitting water ($H_2O$) to release $O_2$ and generate ATP/NADPH.',
+        '2. **Calvin Cycle**: Carbon fixation uses ATP/NADPH in the stroma to convert carbon dioxide ($CO_2$) into G3P/glucose.',
+        '3. **Ecological Role**: Provides primary organic biomass and atmospheric oxygen sustaining Earth\'s biosphere.'
+      ],
+      checkQuestions: [
+        'Where do light-dependent reactions occur versus the light-independent Calvin cycle inside a chloroplast?',
+        'What role does water ($H_2O$) play in the light reaction phase of photosynthesis?'
+      ],
+      memoryAids: ['Photosynthesis Equation: $6CO_2 + 6H_2O + \\text{Light} \\rightarrow \\text{Glucose} + 6O_2$']
+    };
+  }
+
   if (msgLower.includes('sn1') || msgLower.includes('sn2') || msgLower.includes('organic') || msgLower.includes('reaction') || msgLower.includes('chemistry') || msgLower.includes('nucleophile')) {
     return {
       mainMessage: `### Organic Chemistry: **Nucleophilic Substitution ($S_N1$ vs $S_N2$)**\n\n$S_N1$ and $S_N2$ are fundamental substitution mechanisms differing by steps, kinetics, substrate preference, and stereochemistry.`,
@@ -355,20 +391,23 @@ function generateSmartTutorFallback(message: string, subject: string, level: str
     };
   }
 
+  const cleanTopic = message.replace(/^(what is|explain|tell me about|define|how does|why does)\s+/i, '').trim();
+  const titleTopic = cleanTopic.charAt(0).toUpperCase() + cleanTopic.slice(1);
+
   return {
-    mainMessage: `### ${subject} Inquiry: **Analytical Concept Breakdown**\n\nLet me guide you through the fundamental principles of **${message.trim()}** in ${subject} (${level} level).`,
+    mainMessage: `### ${subject} Analysis: **${titleTopic}**\n\n**${titleTopic}** is a core concept in ${subject}.\n\nIn academic study, **${cleanTopic}** is understood by examining its foundational principles, structural mechanisms, and practical applications. Whether studied in foundational K-12 coursework or advanced degree modules, it provides critical insights into real-world systems.`,
     responseType: sessionType,
-    keyConcepts: [`Core ${subject} Definitions`, "Analytical Scaffolding", "Socratic Inquiry"],
+    keyConcepts: [`${titleTopic} Definition`, "Core Mechanics & Principles", "Practical Applications"],
     stepByStep: [
-      `1. **Define Core Terms**: Identify the primary parameters governing "${message.trim()}".`,
-      `2. **Establish Model**: Apply governing theories or formulas in ${subject}.`,
-      `3. **Synthesize Solution**: Verify logical consistency and draw conclusions.`
+      `1. **Core Definition**: Identify the foundational properties and definitions governing ${cleanTopic}.`,
+      `2. **Mechanism & Structure**: Analyze how ${cleanTopic} operates within ${subject} theory.`,
+      `3. **Practical Application**: Apply ${cleanTopic} to solve real-world problems and empirical case studies.`
     ],
     checkQuestions: [
-      `What key assumptions are required for this ${subject} concept to hold true?`,
-      `Can you explain how this topic connects to practical applications?`
+      `What are the primary factors that influence ${cleanTopic}?`,
+      `How does ${cleanTopic} connect to related topics in ${subject}?`
     ],
-    memoryAids: ["Break complex topics into core definitions before solving detailed sub-problems."]
+    memoryAids: [`Master ${cleanTopic} by connecting its core definition to everyday real-world examples!`]
   };
 }
 

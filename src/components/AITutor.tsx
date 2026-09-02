@@ -106,21 +106,43 @@ function generateClientTutorFallback(message: string, subject: string) {
     } catch (e) {}
   }
 
-  // 3. General Subject Breakdown
+  // 4. Polymer & Chemistry
+  if (msgLower.includes('polymer') || msgLower.includes('monomer') || msgLower.includes('plastic')) {
+    return {
+      mainMessage: `### Chemistry & Materials Science: **Polymers & Monomers**\n\nA **polymer** is a large macromolecule composed of repeating structural units called **monomers**, connected by covalent chemical bonds.\n\n### Classification of Polymers:\n- **Natural Polymers**: DNA, proteins (amino acid polymers), cellulose, starch, and natural rubber.\n- **Synthetic Polymers**: Polyethylene (plastics), Nylon, PVC (polyvinyl chloride), Teflon, and Kevlar.`,
+      keyConcepts: ['Polymers & Monomers', 'Polymerization (Addition & Condensation)', 'Thermoplastics vs Thermosets'],
+      stepByStep: [
+        '1. **Monomer Building Blocks**: Small reactive molecules (monomers) join together in long repeating chains.',
+        '2. **Polymerization Reactions**: Monomers undergo addition (chain-growth) or condensation (step-growth) reactions.',
+        '3. **Structure & Properties**: Polymer chain length, branching, and cross-linking determine flexibility, strength, and thermal melting point.'
+      ],
+      checkQuestions: [
+        'What is the fundamental difference between addition polymerization and condensation polymerization?',
+        'Why do thermosetting plastics retain their shape when heated, whereas thermoplastics melt and can be reshaped?'
+      ],
+      memoryAids: ['Polymer = "Poly" (Many) + "Mer" (Parts). Long chains of repeating monomer parts!'],
+      encouragement: 'Excellent chemistry question on macromolecules!'
+    };
+  }
+
+  // 5. Dynamic Clean Topic Response
+  const cleanTopic = message.replace(/^(what is|explain|tell me about|define|how does|why does)\s+/i, '').trim();
+  const titleTopic = cleanTopic.charAt(0).toUpperCase() + cleanTopic.slice(1);
+
   return {
-    mainMessage: `### ${subject} Inquiry: **Analytical Concept Breakdown**\n\nLet me guide you through the fundamental principles of **${message.trim()}** in ${subject}.`,
-    keyConcepts: [`Core ${subject} Principles`, 'Analytical Scaffolding', 'Socratic Inquiry'],
+    mainMessage: `### ${subject} Analysis: **${titleTopic}**\n\n**${titleTopic}** is a core concept in ${subject}.\n\nIn academic study, **${cleanTopic}** is understood by examining its foundational principles, structural mechanisms, and practical applications. Whether studied in foundational K-12 coursework or advanced degree modules, it provides critical insights into real-world systems.`,
+    keyConcepts: [`${titleTopic} Definition`, 'Core Mechanics & Principles', 'Practical Applications'],
     stepByStep: [
-      `1. **Define Core Terms**: Identify the primary parameters governing "${message.trim()}".`,
-      `2. **Establish Model**: Apply governing theories or formulas in ${subject}.`,
-      `3. **Synthesize Solution**: Verify logical consistency and draw conclusions.`
+      `1. **Core Definition**: Identify the foundational properties and definitions governing ${cleanTopic}.`,
+      `2. **Mechanism & Structure**: Analyze how ${cleanTopic} operates within ${subject} theory.`,
+      `3. **Practical Application**: Apply ${cleanTopic} to solve real-world problems and empirical case studies.`
     ],
     checkQuestions: [
-      `What key assumptions are required for this ${subject} concept to hold true?`,
-      `Can you explain how this topic connects to practical applications?`
+      `What are the primary factors that influence ${cleanTopic}?`,
+      `How does ${cleanTopic} connect to related topics in ${subject}?`
     ],
-    memoryAids: ['Break complex topics into core definitions before solving detailed sub-problems.'],
-    encouragement: 'Keep asking great questions to deepen your knowledge!'
+    memoryAids: [`Master ${cleanTopic} by connecting its core definition to everyday real-world examples!`],
+    encouragement: `Great question on ${cleanTopic}! Active learning builds deep mastery.`
   };
 }
 
