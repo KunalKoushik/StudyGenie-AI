@@ -2,22 +2,22 @@ import { z } from 'zod';
 
 export const tutorRequestSchema = z.object({
   message: z.string().min(1, 'Message cannot be empty').max(2000, 'Message too long'),
-  subject: z.string().default('Mathematics'),
-  studentLevel: z.enum(['beginner', 'intermediate', 'advanced']).default('intermediate'),
-  sessionType: z.enum(['concept_explanation', 'problem_solving', 'homework_help', 'exam_prep']).default('concept_explanation')
+  subject: z.string().optional().default('Mathematics'),
+  studentLevel: z.enum(['beginner', 'intermediate', 'advanced']).optional().default('intermediate'),
+  sessionType: z.enum(['concept_explanation', 'problem_solving', 'homework_help', 'exam_prep']).optional().default('concept_explanation')
 });
 
 export const flashcardGenSchema = z.object({
   topic: z.string().min(1, 'Topic cannot be empty').max(500),
   count: z.number().int().min(1).max(20).default(5),
-  subject: z.string().default('Mathematics')
+  subject: z.string().optional().default('Mathematics')
 });
 
 export const quizGenSchema = z.object({
   topic: z.string().min(1, 'Topic cannot be empty').max(500),
   count: z.number().int().min(1).max(15).default(5),
-  subject: z.string().default('Mathematics'),
-  difficulty: z.enum(['Easy', 'Medium', 'Hard']).default('Medium')
+  subject: z.string().optional().default('Mathematics'),
+  difficulty: z.enum(['Easy', 'Medium', 'Hard']).optional().default('Medium')
 });
 
 export const visionAnalyzeSchema = z.object({
