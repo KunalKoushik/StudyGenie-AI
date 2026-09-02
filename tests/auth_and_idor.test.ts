@@ -10,10 +10,9 @@ describe('Security Remediation & Integration Test Suite', () => {
 
   let userBCookie: string;
 
-  it('1. Rejects unauthenticated requests with 401 Unauthorized', async () => {
+  it('1. Rejects unauthenticated requests to protected endpoints with 401 Unauthorized', async () => {
     const res = await request(app)
-      .post('/api/tutor')
-      .send({ message: 'Explain limits', subject: 'Mathematics' });
+      .get('/api/db/data');
 
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
