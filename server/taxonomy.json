@@ -1,0 +1,70 @@
+{
+  "version": "1.0.0",
+  "namespaces": {
+    "school_core": {
+      "name": "School Core (K-10)",
+      "stages": ["nursery", "lkg", "ukg", "primary_1", "primary_2", "primary_3", "primary_4", "primary_5", "middle_6", "middle_7", "middle_8", "secondary_9", "secondary_10"],
+      "boards": ["CBSE", "ICSE", "State Board", "IB", "Cambridge"],
+      "subjects": [
+        { "id": "mathematics", "name": "Mathematics", "subtopics": ["Arithmetic", "Algebra", "Geometry", "Trigonometry", "Mensuration", "Statistics"] },
+        { "id": "physics", "name": "Physics", "subtopics": ["Motion", "Force & Gravitation", "Light & Optics", "Electricity & Magnetism", "Energy"] },
+        { "id": "chemistry", "name": "Chemistry", "subtopics": ["Matter & States", "Atoms & Molecules", "Chemical Reactions", "Acids, Bases & Salts", "Periodic Table"] },
+        { "id": "biology", "name": "Biology", "subtopics": ["Cell Structure", "Life Processes", "Control & Coordination", "Heredity & Evolution", "Ecology"] },
+        { "id": "environmental_science", "name": "Environmental Science", "subtopics": ["Ecosystems", "Natural Resources", "Pollution & Conservation"] },
+        { "id": "history", "name": "History", "subtopics": ["Ancient Civilizations", "Medieval Period", "Modern World History", "Indian Freedom Struggle"] },
+        { "id": "geography", "name": "Geography", "subtopics": ["Physical Geography", "Climate & Vegetation", "Resource & Agriculture", "Map Work"] },
+        { "id": "civics", "name": "Civics & Political Science", "subtopics": ["Democracy & Constitution", "Government Systems", "Rights & Duties"] },
+        { "id": "computer_science", "name": "Computer Science", "subtopics": ["Basics of Computers", "Coding Fundamentals", "Python", "Web Basics"] },
+        { "id": "language", "name": "English & Languages", "subtopics": ["Grammar", "Reading Comprehension", "Writing Skills", "Literature"] }
+      ]
+    },
+    "senior_secondary": {
+      "name": "Senior Secondary (11-12)",
+      "stages": ["senior_secondary_11", "senior_secondary_12"],
+      "boards": ["CBSE", "ICSE", "State Board", "IB", "Cambridge"],
+      "streams": ["Science", "Commerce", "Arts"],
+      "subjects": [
+        { "id": "physics_11_12", "name": "Physics (11-12)", "subtopics": ["Mechanics", "Thermodynamics", "Electrostatics", "Magnetism", "Optics", "Modern Physics"] },
+        { "id": "chemistry_11_12", "name": "Chemistry (11-12)", "subtopics": ["Physical Chemistry", "Organic Chemistry", "Inorganic Chemistry", "Biomolecules"] },
+        { "id": "math_11_12", "name": "Mathematics (11-12)", "subtopics": ["Calculus", "Vectors & 3D Geometry", "Matrices & Determinants", "Probability", "Relations & Functions"] },
+        { "id": "biology_11_12", "name": "Biology (11-12)", "subtopics": ["Cell Biology", "Genetics & Evolution", "Human Physiology", "Plant Physiology", "Biotechnology"] },
+        { "id": "accountancy", "name": "Accountancy", "subtopics": ["Financial Statements", "Partnership Accounts", "Company Accounts", "Cash Flow"] },
+        { "id": "business_studies", "name": "Business Studies", "subtopics": ["Principles of Management", "Financial Markets", "Marketing", "Consumer Protection"] },
+        { "id": "economics_11_12", "name": "Economics", "subtopics": ["Microeconomics", "Macroeconomics", "Indian Economic Development", "Statistics for Economics"] },
+        { "id": "psychology", "name": "Psychology", "subtopics": ["Cognitive Processes", "Human Development", "Psychological Disorders", "Social Psychology"] },
+        { "id": "sociology", "name": "Sociology", "subtopics": ["Indian Society", "Social Change", "Social Institutions", "Social Stratification"] },
+        { "id": "political_science_11_12", "name": "Political Science", "subtopics": ["Indian Constitution at Work", "Political Theory", "Contemporary World Politics"] }
+      ]
+    },
+    "undergraduate": {
+      "name": "Undergraduate Degree (Y1-Y4)",
+      "stages": ["undergraduate_y1", "undergraduate_y2", "undergraduate_y3", "undergraduate_y4"],
+      "streams": ["Engineering", "Medicine", "Law", "Commerce", "Humanities", "Computer Science"],
+      "subjects": [
+        { "id": "cs_engineering", "name": "Computer Science & IT", "subtopics": ["Data Structures & Algorithms", "Operating Systems", "Database Systems", "Computer Networks", "Software Engineering", "AI & ML"] },
+        { "id": "engineering_core", "name": "Engineering Core", "subtopics": ["Engineering Mathematics", "Thermodynamics", "Circuit Theory", "Fluid Mechanics", "Signals & Systems"] },
+        { "id": "medicine_life_sci", "name": "Medicine & Life Sciences", "subtopics": ["Human Anatomy", "Pathology", "Pharmacology", "Biochemistry", "Microbiology"] },
+        { "id": "law_jurisprudence", "name": "Law & Jurisprudence", "subtopics": ["Constitutional Law", "Criminal Law (IPC/CrPC)", "Contract Law", "Corporate Law", "International Law"] },
+        { "id": "finance_commerce", "name": "Finance & Commerce", "subtopics": ["Corporate Finance", "Financial Accounting", "Investment Analysis", "Managerial Economics"] },
+        { "id": "humanities_ug", "name": "Humanities & Social Sciences", "subtopics": ["Political Philosophy", "World History", "Sociological Theory", "English Literature Analysis"] }
+      ]
+    },
+    "upsc_cse": {
+      "name": "UPSC Civil Services Examination (UPSC CSE)",
+      "stages": ["competitive_exam"],
+      "exam": "UPSC_CSE",
+      "subjects": [
+        { "id": "upsc_polity", "name": "Indian Polity & Governance", "subtopics": ["Preamble & Fundamental Rights", "Directive Principles & Duties", "Union Executive & Parliament", "Judiciary & Supreme Court", "Constitutional Bodies", "Panchayati Raj & Federalism"] },
+        { "id": "upsc_history", "name": "Indian & World History", "subtopics": ["Ancient & Medieval India", "Modern Indian History & Freedom Struggle", "Post-Independence India", "World History & Revolutions", "Art & Culture"] },
+        { "id": "upsc_geography", "name": "Indian & World Geography", "subtopics": ["Geomorphology & Climatology", "Oceanography & Physical Geography", "Indian Physical & Human Geography", "Economic & Resource Geography"] },
+        { "id": "upsc_economy", "name": "Indian Economy", "subtopics": ["Macroeconomic Principles", "Fiscal Policy & Union Budget", "Monetary Policy & RBI", "Agriculture & Land Reforms", "Inclusive Growth & Inflation", "External Sector & WTO"] },
+        { "id": "upsc_environment", "name": "Environment & Ecology", "subtopics": ["Biodiversity & Conservation", "Climate Change & Conventions", "Environmental Degradation", "Pollution Control & Acts"] },
+        { "id": "upsc_scitech", "name": "Science & Technology", "subtopics": ["Space & Defense Tech", "Biotechnology & Health", "IT & Cybersecurity", "Nanotechnology & AI Current Developments"] },
+        { "id": "upsc_ethics", "name": "Ethics, Integrity & Aptitude (GS Paper IV)", "subtopics": ["Human Values & Ethics", "Attitude & Emotional Intelligence", "Moral Thinkers & Philosophers", "Probity in Governance & Public Service", "Case Studies Analysis"] },
+        { "id": "upsc_csat", "name": "CSAT (Paper II)", "subtopics": ["Reading Comprehension", "Logical Reasoning & Analytical Ability", "Basic Numeracy & Data Interpretation", "Decision Making"] },
+        { "id": "upsc_current_affairs", "name": "Current Affairs", "subtopics": ["National & International Events", "Government Schemes & Policies", "Reports, Indices & Bilateral Relations"] },
+        { "id": "upsc_essay", "name": "Essay & Answer Writing", "subtopics": ["Philosophical Essays", "Socio-Economic Issues", "GS Paper Answer Structuring & Introductions"] }
+      ]
+    }
+  }
+}

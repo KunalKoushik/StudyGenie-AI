@@ -90,6 +90,51 @@ export function initDB() {
       count INTEGER DEFAULT 0,
       PRIMARY KEY (user_id, date)
     );
+
+    CREATE TABLE IF NOT EXISTS response_cache (
+      hash_key TEXT PRIMARY KEY,
+      response_json TEXT NOT NULL,
+      ttl_timestamp INTEGER,
+      content_type TEXT DEFAULT 'exact'
+    );
+
+    CREATE TABLE IF NOT EXISTS query_embeddings (
+      id TEXT PRIMARY KEY,
+      query_text TEXT NOT NULL,
+      embedding_json TEXT NOT NULL,
+      stage TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      response_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS rag_chunks (
+      id TEXT PRIMARY KEY,
+      namespace TEXT NOT NULL,
+      board TEXT NOT NULL,
+      stage TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      subtopic TEXT NOT NULL,
+      chapter TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      embedding_json TEXT NOT NULL,
+      source_url TEXT,
+      last_updated TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS classification_cache (
+      hash_key TEXT PRIMARY KEY,
+      classification_json TEXT NOT NULL,
+      ttl_timestamp INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS subjects (
+      id TEXT PRIMARY KEY,
+      namespace TEXT NOT NULL,
+      name TEXT NOT NULL,
+      subtopics_json TEXT NOT NULL
+    );
   `);
 }
 

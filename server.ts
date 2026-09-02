@@ -21,6 +21,12 @@ import {
   GEMINI_MODEL,
   ALLOWED_ORIGIN
 } from './server/config';
+import { classifyQuery } from './server/classifier';
+import { computeCacheKey, getExactCache, setExactCache, getSemanticCache, setSemanticCache } from './server/cache';
+import { retrieveRelevantChunks, generateSimpleEmbedding } from './server/rag';
+import { buildSystemPrompt, TUTOR_PROMPT_VERSION } from './server/prompts';
+import taxonomyData from './server/taxonomy.json';
+import { EducationContext } from './src/types';
 import {
   tutorRequestSchema,
   flashcardGenSchema,
@@ -554,6 +560,10 @@ app.get('/api/health', async (_req: Request, res: Response) => {
   });
 });
 
+app.get('/api/taxonomy', (_req: Request, res: Response) => {
+  res.json({ success: true, data: taxonomyData });
+});
+
 // PROTECTED ENDPOINTS (Strict Authentication Enforced)
 
 app.post('/api/tutor', authenticateUserToken as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
@@ -563,6 +573,49 @@ app.post('/api/tutor', authenticateUserToken as express.RequestHandler, async (r
   }
 
   const userId = req.user ? req.user.id : 'user-demo-default';
+  const { message, subject: clientSubject, overrideSubject, sessionType: clientSessionType, educationContext: rawEduContext } = validation.data;
+  const educationContext = rawEduContext as EducationContext | undefined;
+
+  // 1. Server-Side AI Query Classification
+  const classification = await classifyQuery(message, educationContext);
+  if (overrideSubject) {
+    classification.subject = overrideSubject;
+  } else if (clientSubject && clientSubject !== 'Mathematics' && clientSubject !== 'General Science') {
+    classification.subject = clientSubject;
+  }
+  if (clientSessionType) {
+    classification.intent = clientSessionType as any;
+  }
+
+  const stage = classification.detectedStage || educationContext?.stage || 'secondary_10';
+  const cacheKey = computeCacheKey(classification.subject, stage, classification.intent, message);
+
+  // 2. Exact-Match Cache Lookup (Cache Hits DO NOT consume AI quota!)
+  const exactHit = getExactCache(cacheKey);
+  if (exactHit) {
+    return res.json({
+      success: true,
+      data: exactHit.data,
+      cached: true,
+      cacheType: 'exact',
+      classification
+    });
+  }
+
+  // 3. Semantic Vector Cache Lookup
+  const queryEmb = generateSimpleEmbedding(message);
+  const semanticHit = getSemanticCache(queryEmb, classification.subject, stage, 0.92);
+  if (semanticHit) {
+    return res.json({
+      success: true,
+      data: semanticHit.data,
+      cached: true,
+      cacheType: 'semantic',
+      classification
+    });
+  }
+
+  // 4. Atomic AI Quota Check (Only consumed on AI generation miss!)
   const quota = checkAndIncrementAIQuota(userId);
   if (!quota.allowed) {
     return res.status(429).json({
@@ -571,16 +624,19 @@ app.post('/api/tutor', authenticateUserToken as express.RequestHandler, async (r
     });
   }
 
-  const { message, subject, studentLevel, sessionType } = validation.data;
+  // 5. RAG Retrieval Step (Curriculum & UPSC Grounding)
+  const { chunks: ragChunks, sources: ragSources } = retrieveRelevantChunks(message, classification.subject, stage, 4, 0.45);
+
   const mathEval = tryEvaluateSimpleMath(message);
   const ai = getGenAI();
 
   if (ai) {
     try {
+      const dynamicPrompt = buildSystemPrompt(classification, educationContext, ragChunks);
       const response = await ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [
-          { role: 'user', parts: [{ text: `${SYSTEM_TUTOR_PROMPT}\n\nSubject: ${subject}\nLevel: ${studentLevel}\nSession Type: ${sessionType}\nStudent Question: ${message}${mathEval ? `\n(Note: Calculated Direct Math Solution: ${mathEval.directAnswer})` : ''}` }] }
+          { role: 'user', parts: [{ text: `${dynamicPrompt}\n\nStudent Question: ${message}${mathEval ? `\n(Note Direct Calculation: ${mathEval.directAnswer})` : ''}` }] }
         ],
         config: { responseMimeType: 'application/json' }
       });
@@ -591,15 +647,48 @@ app.post('/api/tutor', authenticateUserToken as express.RequestHandler, async (r
         if (mathEval && !parsed.mainMessage.includes(String(mathEval.value))) {
           parsed.mainMessage = `**${mathEval.directAnswer}**\n\n${parsed.mainMessage}`;
         }
-        return res.json({ success: true, data: parsed, remainingQuota: quota.remaining });
+
+        parsed.sources = ragSources;
+        parsed.grounded = ragSources.length > 0;
+        parsed.cached = false;
+        parsed.cacheType = null;
+        parsed.classification = classification;
+
+        // Save to exact and semantic cache
+        setExactCache(cacheKey, parsed);
+        setSemanticCache(message, queryEmb, classification.subject, stage, parsed);
+
+        return res.json({
+          success: true,
+          data: parsed,
+          remainingQuota: quota.remaining,
+          cached: false,
+          cacheType: null,
+          classification
+        });
       }
     } catch (err: any) {
       console.warn('Gemini API call failed, using fallback:', err?.message || err);
     }
   }
 
-  const fallback = generateSmartTutorFallback(message, subject, studentLevel, sessionType);
-  return res.json({ success: true, data: fallback, remainingQuota: quota.remaining, degraded: true });
+  // 6. Intelligent Fallback Response
+  const fallback = generateSmartTutorFallback(message, classification.subject, stage, classification.intent);
+  (fallback as any).sources = ragSources;
+  (fallback as any).grounded = ragSources.length > 0;
+  (fallback as any).cached = false;
+  (fallback as any).cacheType = null;
+  (fallback as any).classification = classification;
+
+  return res.json({
+    success: true,
+    data: fallback,
+    remainingQuota: quota.remaining,
+    cached: false,
+    cacheType: null,
+    classification,
+    degraded: true
+  });
 });
 
 app.post('/api/flashcards/generate', requireStrictAuth as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {

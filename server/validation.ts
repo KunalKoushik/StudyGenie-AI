@@ -2,9 +2,16 @@ import { z } from 'zod';
 
 export const tutorRequestSchema = z.object({
   message: z.string().min(1, 'Message cannot be empty').max(2000, 'Message too long'),
-  subject: z.string().optional().default('Mathematics'),
-  studentLevel: z.enum(['beginner', 'intermediate', 'advanced']).optional().default('intermediate'),
-  sessionType: z.enum(['concept_explanation', 'problem_solving', 'homework_help', 'exam_prep']).optional().default('concept_explanation')
+  subject: z.string().optional(),
+  overrideSubject: z.string().optional(),
+  studentLevel: z.string().optional(),
+  sessionType: z.string().optional(),
+  educationContext: z.object({
+    stage: z.string(),
+    board: z.string().optional(),
+    exam: z.string().optional(),
+    stream: z.string().optional()
+  }).optional()
 });
 
 export const flashcardGenSchema = z.object({

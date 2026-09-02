@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage, Subject, StudentLevel } from '../types';
+import { ChatMessage, EducationContext, EducationStage, RAGSource } from '../types';
 import { MathRenderer } from './MathRenderer';
 import { 
   Bot, 
@@ -12,165 +12,51 @@ import {
   RefreshCw,
   BookOpen,
   Mic,
-  MicOff
+  MicOff,
+  GraduationCap,
+  Zap,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 
-function autoDetectSubject(text: string): Subject {
-  const t = text.toLowerCase();
-  if (/\b(f=ma|force|newton|velocity|acceleration|physics|gravity|mass|joule|watt|energy|kinetics)\b/.test(t)) return 'Physics';
-  if (/\b(sn1|sn2|reaction|organic|chemistry|acid|base|mole|element|compound|atom)\b/.test(t)) return 'Chemistry';
-  if (/\b(cell|dna|rna|biology|photosynthesis|gene|organism|protein|enzyme)\b/.test(t)) return 'Biology';
-  if (/\b(bfs|dfs|algorithm|graph|tree|queue|stack|code|programming|computer|array)\b/.test(t)) return 'Computer Science';
-  if (/\b(war|revolution|century|history|empire|king|president|treaty)\b/.test(t)) return 'History';
-  if (/\b(math|calculus|derivative|limit|integral|equation|sqrt|squareroot|square|root|sum|plus|\+|-|\*|\/)\b/.test(t) || /sq[ua]{2}re\s*root|squareroot|sqrt|root/.test(t)) return 'Mathematics';
-  return 'General Science';
-}
-
-function generateClientTutorFallback(message: string, subject: string) {
-  const msgLower = message.toLowerCase().trim();
-
-  // 1. Greetings
-  if (/^(hi+|hello+|hey+|greetings|good\s*(morning|afternoon|evening)|who\s*are\s*you|help|thanks)\s*[\!\?\.\]]*$/i.test(msgLower)) {
-    return {
-      mainMessage: `Hello Scholar! 👋 I am your **StudyGenie AI Tutor**.\n\nI have auto-detected **${subject}** for your study session.\n\nHow can I assist you today? Ask me to explain concepts, solve complex equations, break down homework problems, or quiz your understanding!`,
-      keyConcepts: [`${subject} Fundamentals`, 'Socratic Inquiry', 'Active Recall'],
-      stepByStep: [
-        `1. Type any topic, problem, or equation below`,
-        `2. Review step-by-step Socratic breakdowns with LaTeX math formulas`,
-        `3. Test your recall with check questions`
-      ],
-      checkQuestions: [
-        `What specific topic or problem in ${subject} would you like to explore first?`,
-        `Would you prefer a conceptual explanation or a step-by-step numerical solution?`
-      ],
-      memoryAids: ['Active recall and self-explanation boost long-term conceptual mastery!'],
-      encouragement: 'Let\'s make today\'s study session productive!'
-    };
-  }
-
-  // 2. Square Root handling (e.g. squareroot(97), square root of 21/100, sqrt(16))
-  const sqrtMatch = msgLower.match(/^(?:sq[ua]{2}re\s*root|squareroot|sqaure-root|square-root|sqrt|root)\s*(?:of)?\s*\(?\s*([0-9\.\/\s\+\-\*]+)\s*\)?$/i);
-  if (sqrtMatch) {
-    const innerStr = sqrtMatch[1].trim();
-    let innerValue: number;
-    if (innerStr.includes('/')) {
-      const [num, den] = innerStr.split('/').map(s => parseFloat(s.trim()));
-      innerValue = num / den;
-    } else {
-      innerValue = parseFloat(innerStr);
-    }
-
-    if (!isNaN(innerValue) && innerValue >= 0) {
-      const val = Math.sqrt(innerValue);
-      const formattedVal = Number.isInteger(val) ? val.toString() : val.toFixed(4);
-      return {
-        mainMessage: `The calculated result is **$\\sqrt{${innerStr}} = ${formattedVal}$**.\n\nHere is the step-by-step radical evaluation:`,
-        keyConcepts: ['Square Root Property', 'Radical Simplification', 'Numerical Approximations'],
-        stepByStep: [
-          `1. Parsed mathematical radical: $\\sqrt{${innerStr}}$`,
-          `2. Evaluated square root computation: $\\sqrt{${innerStr}} = ${formattedVal}$`,
-          `3. Exact decimal representation: **${val}**`
-        ],
-        checkQuestions: [
-          `Why does $\\sqrt{x}$ only yield real numbers for non-negative values ($x \\ge 0$)?`,
-          `What is the relationship between taking the square root and raising a number to exponent 1/2?`
-        ],
-        memoryAids: ['Radical Exponent Rule: $\\sqrt[n]{x} = x^{\\frac{1}{n}}$'],
-        encouragement: 'Excellent mathematical radical computation!'
-      };
-    }
-  }
-
-  // 3. Basic Arithmetic / Math (e.g. 2+5)
-  if (/^[0-9\.\s\+\-\*\/\(\)\^]+$/.test(msgLower) && /[0-9]/.test(msgLower)) {
-    try {
-      const safeExpr = msgLower.replace(/\^/g, '**');
-      const val = Function(`"use strict"; return (${safeExpr});`)();
-      if (typeof val === 'number' && !isNaN(val) && isFinite(val)) {
-        return {
-          mainMessage: `The calculated result is **${message.trim()} = ${val}**.\n\nHere is the step-by-step mathematical evaluation:`,
-          keyConcepts: ['Arithmetic Evaluation', 'Order of Operations (PEMDAS)', 'Numerical Computation'],
-          stepByStep: [
-            `1. Parsed mathematical statement: $${message.trim()}$`,
-            `2. Evaluated arithmetic operations: $${message.trim()} = ${val}$`,
-            `3. Verified exact value: **${val}**`
-          ],
-          checkQuestions: [
-            `How would the result change if you doubled one of the terms?`,
-            `Can you write a real-world word problem representing this equation?`
-          ],
-          memoryAids: ['PEMDAS: Parentheses → Exponents → Multiplication/Division → Addition/Subtraction'],
-          encouragement: 'Great mathematical accuracy!'
-        };
-      }
-    } catch (e) {}
-  }
-
-  // 4. Polymer & Chemistry
-  if (msgLower.includes('polymer') || msgLower.includes('monomer') || msgLower.includes('plastic')) {
-    return {
-      mainMessage: `### Chemistry & Materials Science: **Polymers & Monomers**\n\nA **polymer** is a large macromolecule composed of repeating structural units called **monomers**, connected by covalent chemical bonds.\n\n### Classification of Polymers:\n- **Natural Polymers**: DNA, proteins (amino acid polymers), cellulose, starch, and natural rubber.\n- **Synthetic Polymers**: Polyethylene (plastics), Nylon, PVC (polyvinyl chloride), Teflon, and Kevlar.`,
-      keyConcepts: ['Polymers & Monomers', 'Polymerization (Addition & Condensation)', 'Thermoplastics vs Thermosets'],
-      stepByStep: [
-        '1. **Monomer Building Blocks**: Small reactive molecules (monomers) join together in long repeating chains.',
-        '2. **Polymerization Reactions**: Monomers undergo addition (chain-growth) or condensation (step-growth) reactions.',
-        '3. **Structure & Properties**: Polymer chain length, branching, and cross-linking determine flexibility, strength, and thermal melting point.'
-      ],
-      checkQuestions: [
-        'What is the fundamental difference between addition polymerization and condensation polymerization?',
-        'Why do thermosetting plastics retain their shape when heated, whereas thermoplastics melt and can be reshaped?'
-      ],
-      memoryAids: ['Polymer = "Poly" (Many) + "Mer" (Parts). Long chains of repeating monomer parts!'],
-      encouragement: 'Excellent chemistry question on macromolecules!'
-    };
-  }
-
-  // 5. Dynamic Clean Topic Response
-  const cleanTopic = message.replace(/^(what is|explain|tell me about|define|how does|why does)\s+/i, '').trim();
-  const titleTopic = cleanTopic.charAt(0).toUpperCase() + cleanTopic.slice(1);
-
-  return {
-    mainMessage: `### ${subject} Analysis: **${titleTopic}**\n\n**${titleTopic}** is a core concept in ${subject}.\n\nIn academic study, **${cleanTopic}** is understood by examining its foundational principles, structural mechanisms, and practical applications. Whether studied in foundational K-12 coursework or advanced degree modules, it provides critical insights into real-world systems.`,
-    keyConcepts: [`${titleTopic} Definition`, 'Core Mechanics & Principles', 'Practical Applications'],
-    stepByStep: [
-      `1. **Core Definition**: Identify the foundational properties and definitions governing ${cleanTopic}.`,
-      `2. **Mechanism & Structure**: Analyze how ${cleanTopic} operates within ${subject} theory.`,
-      `3. **Practical Application**: Apply ${cleanTopic} to solve real-world problems and empirical case studies.`
-    ],
-    checkQuestions: [
-      `What are the primary factors that influence ${cleanTopic}?`,
-      `How does ${cleanTopic} connect to related topics in ${subject}?`
-    ],
-    memoryAids: [`Master ${cleanTopic} by connecting its core definition to everyday real-world examples!`],
-    encouragement: `Great question on ${cleanTopic}! Active learning builds deep mastery.`
-  };
-}
+const STAGE_OPTIONS: { stage: EducationStage; label: string; exam?: string; icon: string }[] = [
+  { stage: 'secondary_10', label: 'Class 10 CBSE', icon: '🏫' },
+  { stage: 'senior_secondary_12', label: 'Class 12 Science', icon: '🧪' },
+  { stage: 'competitive_exam', label: 'UPSC CSE (Civil Services)', exam: 'UPSC_CSE', icon: '🏛️' },
+  { stage: 'undergraduate_y2', label: 'Undergraduate CS & IT', icon: '💻' },
+  { stage: 'nursery', label: 'Nursery & Primary (K-5)', icon: '🎈' }
+];
 
 export const AITutor: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const [selectedContext, setSelectedContext] = useState<EducationContext>({
+    stage: 'secondary_10',
+    board: 'CBSE',
+    stream: 'General'
+  });
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome-1',
       sender: 'ai',
-      text: 'Hello Scholar! I am your StudyGenie AI Tutor. Type any topic, problem, or equation below, and I will auto-detect the subject and guide you step-by-step.',
+      text: 'Hello Scholar! I am your StudyGenie AI Tutor powered by server-side AI classification, RAG curriculum retrieval, and instant caching.',
       timestamp: 'Just now',
       structuredData: {
-        mainMessage: 'Welcome! I use Socratic guidance to build deep conceptual understanding. Ask any question in STEM or Humanities!',
-        keyConcepts: ['Socratic Inquiry', 'Auto-Subject Detection', 'Active Learning'],
+        mainMessage: 'Welcome! I provide grounded Socratic guidance across all academic levels — from **Nursery & K-5** to **Class 10/12 CBSE**, **Undergraduate Degrees**, and **UPSC CSE Civil Services**.',
+        keyConcepts: ['Server-Side AI Classification', 'NCERT & UPSC RAG Grounding', 'Instant Caching'],
         stepByStep: [
-          'Type any topic or problem below (e.g., "2+5", "Explain Newton\'s laws", "square root of 21/100")',
-          'Review step-by-step mathematical & conceptual breakdowns',
-          'Test your knowledge with reflection questions'
+          'Select your target academic stage above (e.g., "Class 10 CBSE", "UPSC CSE")',
+          'Ask any topic, formula, or exam question below',
+          'Review step-by-step Socratic breakdowns with verified sources and citations'
         ],
-        memoryAids: ['Learning is most effective when you actively engage with practice problems!'],
+        memoryAids: ['Learning is most effective when grounded in verified curriculum standards!'],
         encouragement: 'Let\'s make today\'s study session productive!'
       }
     }
   ]);
 
   const [input, setInput] = useState('');
-  const [selectedLevel, setSelectedLevel] = useState<StudentLevel>('intermediate');
   const [loading, setLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -180,11 +66,11 @@ export const AITutor: React.FC = () => {
   }, [messages, loading]);
 
   const quickStarters = [
+    { label: '🏛️ Article 21 & Supreme Court', prompt: 'Explain Article 21 Right to Life and Supreme Court landmark judgments' },
     { label: '🧮 2+5', prompt: '2+5' },
-    { label: '📐 L\'Hôpital\'s Rule', prompt: 'Explain L\'Hôpital\'s rule' },
-    { label: '⚡ Newton\'s F=ma', prompt: 'What is Newton\'s second law F=ma?' },
-    { label: '🧪 SN1 vs SN2', prompt: 'How do SN1 and SN2 organic chemistry reactions differ?' },
-    { label: '💻 BFS vs DFS', prompt: 'Explain BFS vs DFS graph traversal' }
+    { label: '📐 squareroot(97)', prompt: 'squareroot(97)' },
+    { label: '🧪 What is Polymer?', prompt: 'What is polymer and how does polymerization work?' },
+    { label: '💻 BFS vs DFS Graph', prompt: 'Explain BFS vs DFS graph traversal algorithms' }
   ];
 
   const handleListen = () => {
@@ -213,14 +99,12 @@ export const AITutor: React.FC = () => {
     const query = textToSend || input;
     if (!query.trim() || loading) return;
 
-    const detectedSubject = autoDetectSubject(query);
-
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       sender: 'user',
       text: query,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      subject: detectedSubject
+      educationContext: selectedContext
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -233,9 +117,7 @@ export const AITutor: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: query,
-          subject: detectedSubject,
-          studentLevel: selectedLevel,
-          sessionType: 'concept_explanation'
+          educationContext: selectedContext
         })
       });
 
@@ -246,28 +128,43 @@ export const AITutor: React.FC = () => {
           sender: 'ai',
           text: json.data.mainMessage || 'Here is the step-by-step breakdown:',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          subject: detectedSubject,
-          structuredData: json.data
+          subject: json.classification?.subject || json.data.subject,
+          structuredData: {
+            ...json.data,
+            cached: json.cached,
+            cacheType: json.cacheType,
+            sources: json.data.sources || [],
+            grounded: json.data.grounded
+          }
         };
         setMessages((prev) => [...prev, aiMsg]);
         setLoading(false);
         return;
       }
     } catch (err) {
-      console.warn('Tutor chat API connection error, utilizing smart client fallback:', err);
+      console.warn('Tutor chat API connection error:', err);
     }
 
-    // Smart fallback ensures a rich response card is ALWAYS rendered for every query!
-    const fallbackData = generateClientTutorFallback(query, detectedSubject);
-    const fallbackAiMsg: ChatMessage = {
+    // Client fallback ensures a response is rendered even if network is offline
+    const aiMsg: ChatMessage = {
       id: `ai-${Date.now()}`,
       sender: 'ai',
-      text: fallbackData.mainMessage,
+      text: `### Academic Analysis: **${query}**\n\nHere is a structured explanation for **${query}**.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      subject: detectedSubject,
-      structuredData: fallbackData
+      structuredData: {
+        mainMessage: `### Academic Breakdown: **${query}**\n\nHere is the foundational analysis for **${query}**.`,
+        keyConcepts: ['Core Analysis', 'Socratic Inquiry'],
+        stepByStep: [
+          '1. Define foundational terms',
+          '2. Analyze structural mechanisms',
+          '3. Apply to practical problem solving'
+        ],
+        checkQuestions: ['What are the core principles behind this concept?'],
+        memoryAids: ['Master concepts through active practice!'],
+        grounded: false
+      }
     };
-    setMessages((prev) => [...prev, fallbackAiMsg]);
+    setMessages((prev) => [...prev, aiMsg]);
     setLoading(false);
   };
 
@@ -293,8 +190,8 @@ export const AITutor: React.FC = () => {
   return (
     <div className="space-y-6 pb-12 max-w-4xl mx-auto">
       
-      {/* Modern Top Header Bar */}
-      <div className="flex items-center justify-between bg-slate-950/80 border border-slate-800 rounded-2xl p-4 shadow-lg backdrop-blur-md">
+      {/* Modern Top Context Bar */}
+      <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 shadow-lg backdrop-blur-md flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
             <Bot className="w-5 h-5" />
@@ -304,23 +201,36 @@ export const AITutor: React.FC = () => {
               <h1 className="text-base font-extrabold text-white">StudyGenie AI Tutor</h1>
               <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 px-2 py-0.5 rounded-full font-semibold">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Auto-Detect Active
+                Server Classification & RAG Active
               </span>
             </div>
-            <p className="text-xs text-slate-400">Ask anything in STEM or Humanities • Step-by-step Socratic guidance</p>
+            <p className="text-xs text-slate-400">Nursery to Bachelor's & UPSC CSE • Grounded Curriculum Guidance</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-slate-400 hidden sm:inline">Level:</span>
+        {/* Academic Stage Selector Chip */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400 font-semibold flex items-center gap-1">
+            <GraduationCap className="w-4 h-4 text-indigo-400" />
+            <span>Target:</span>
+          </span>
           <select
-            value={selectedLevel}
-            onChange={(e) => setSelectedLevel(e.target.value as StudentLevel)}
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 font-bold focus:outline-none focus:border-indigo-500 transition-colors"
+            value={selectedContext.stage}
+            onChange={(e) => {
+              const opt = STAGE_OPTIONS.find((s) => s.stage === e.target.value);
+              setSelectedContext({
+                stage: e.target.value as EducationStage,
+                board: opt?.stage === 'secondary_10' || opt?.stage === 'senior_secondary_12' ? 'CBSE' : 'University',
+                exam: opt?.exam as any
+              });
+            }}
+            className="bg-slate-900 border border-indigo-500/30 hover:border-indigo-500/60 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-bold focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
           >
-            <option value="beginner">Beginner</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="advanced">Advanced</option>
+            {STAGE_OPTIONS.map((opt) => (
+              <option key={opt.stage} value={opt.stage}>
+                {opt.icon} {opt.label}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -337,8 +247,6 @@ export const AITutor: React.FC = () => {
               <div className="max-w-2xl bg-indigo-600 text-white rounded-2xl rounded-tr-none p-4 shadow-lg space-y-1">
                 <p className="text-sm font-medium whitespace-pre-wrap">{msg.text}</p>
                 <div className="flex items-center justify-end gap-2 text-[10px] text-indigo-200 opacity-80 font-semibold">
-                  <span>{msg.subject}</span>
-                  <span>•</span>
                   <span>{msg.timestamp}</span>
                 </div>
               </div>
@@ -355,8 +263,16 @@ export const AITutor: React.FC = () => {
                       <Sparkles className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="text-sm font-bold text-white">StudyGenie AI Tutor</span>
-                      <p className="text-[10px] text-slate-400">{msg.timestamp}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-white">StudyGenie AI Tutor</span>
+                        {msg.structuredData?.cached && (
+                          <span className="flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
+                            <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
+                            <span>⚡ Instant ({msg.structuredData.cacheType === 'exact' ? 'Exact Cache' : 'Semantic Cache'})</span>
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400">{msg.timestamp} {msg.subject ? `• ${msg.subject}` : ''}</p>
                     </div>
                   </div>
 
@@ -386,6 +302,30 @@ export const AITutor: React.FC = () => {
                 <div className="text-slate-100 text-sm leading-relaxed space-y-2">
                   <MathRenderer content={msg.structuredData?.mainMessage || msg.text} />
                 </div>
+
+                {/* Grounded Citation Source Chips */}
+                {msg.structuredData?.sources && msg.structuredData.sources.length > 0 && (
+                  <div className="bg-slate-900/90 border border-emerald-500/30 rounded-xl p-3.5 space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      <span>Verified Curriculum & Syllabus Citations</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {msg.structuredData.sources.map((src: RAGSource, idx: number) => (
+                        <a
+                          key={idx}
+                          href={src.sourceUrl || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium transition-all"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>{src.title}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Key Concepts Pills */}
                 {msg.structuredData?.keyConcepts && msg.structuredData.keyConcepts.length > 0 && (
@@ -457,7 +397,7 @@ export const AITutor: React.FC = () => {
         {loading && (
           <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 flex items-center gap-3 text-indigo-300 text-xs font-semibold animate-pulse">
             <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" />
-            <span>StudyGenie AI Tutor is reasoning through Socratic steps...</span>
+            <span>Classifying inquiry, checking semantic cache & searching curriculum RAG sources...</span>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -496,7 +436,7 @@ export const AITutor: React.FC = () => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder={`Ask anything... (e.g., "2+5", "Explain Newton's F=ma", "SN1 vs SN2")`}
+            placeholder={`Ask anything... (e.g., "Article 21 Supreme Court", "2+5", "Polymer definition")`}
             className="flex-1 bg-transparent px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none"
           />
           <button

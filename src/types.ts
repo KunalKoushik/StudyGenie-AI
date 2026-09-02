@@ -1,17 +1,79 @@
 export type NavTab = 'dashboard' | 'tutor' | 'snap' | 'syllabus' | 'quiz' | 'analytics' | 'formula-lab';
 
-export type Subject = 'Mathematics' | 'Physics' | 'Chemistry' | 'Biology' | 'Computer Science' | 'History' | 'General Science';
+export type Subject = 
+  | 'Mathematics' 
+  | 'Physics' 
+  | 'Chemistry' 
+  | 'Biology' 
+  | 'Computer Science' 
+  | 'History' 
+  | 'General Science'
+  | 'Indian Polity & Governance'
+  | 'Indian Economy'
+  | 'Environment & Ecology'
+  | 'Ethics & Aptitude (GS IV)'
+  | 'Current Affairs'
+  | string;
 
 export type StudentLevel = 'beginner' | 'intermediate' | 'advanced';
 
-export type SessionType = 'concept_explanation' | 'problem_solving' | 'homework_help' | 'exam_prep';
+export type EducationStage =
+  | 'nursery' | 'lkg' | 'ukg'
+  | 'primary_1' | 'primary_2' | 'primary_3' | 'primary_4' | 'primary_5'
+  | 'middle_6' | 'middle_7' | 'middle_8'
+  | 'secondary_9' | 'secondary_10'
+  | 'senior_secondary_11' | 'senior_secondary_12'
+  | 'undergraduate_y1' | 'undergraduate_y2' | 'undergraduate_y3' | 'undergraduate_y4'
+  | 'competitive_exam';
+
+export type Board = 'CBSE' | 'ICSE' | 'State Board' | 'IB' | 'Cambridge' | 'University' | 'N/A';
+
+export type CompetitiveExam = 'UPSC_CSE' | 'JEE' | 'NEET' | 'SSC' | 'Banking' | 'GATE' | 'CAT' | 'None' | string;
+
+export interface EducationContext {
+  stage: EducationStage;
+  board?: Board;
+  exam?: CompetitiveExam;
+  stream?: 'Science' | 'Commerce' | 'Arts' | 'Engineering' | 'Medicine' | 'Law' | 'General';
+}
+
+export type QueryIntent =
+  | 'concept_explanation'
+  | 'problem_solving'
+  | 'homework_help'
+  | 'exam_prep'
+  | 'definition'
+  | 'comparison'
+  | 'current_affairs'
+  | 'essay_feedback'
+  | 'quiz_me'
+  | 'greeting'
+  | 'small_talk';
+
+export interface QueryClassification {
+  subject: string;
+  subtopic?: string;
+  detectedStage?: EducationStage;
+  intent: QueryIntent;
+  language: string;
+  requiresRetrieval: boolean;
+  confidence: number;
+}
+
+export interface RAGSource {
+  title: string;
+  reference: string;
+  sourceUrl?: string;
+  lastUpdated?: string;
+}
 
 export interface UserProfile {
   name: string;
   email?: string;
   targetExam: string;
   gradeLevel: string;
-  focusSubject: Subject;
+  focusSubject: string;
+  educationContext?: EducationContext;
   dailyGoalHours: number;
   avatarUrl?: string;
   onboarded: boolean;
@@ -38,7 +100,8 @@ export interface ChatMessage {
   sender: 'user' | 'ai';
   text: string;
   timestamp: string;
-  subject?: Subject;
+  subject?: string;
+  educationContext?: EducationContext;
   structuredData?: {
     mainMessage: string;
     responseType?: string;
@@ -47,6 +110,11 @@ export interface ChatMessage {
     checkQuestions?: string[];
     memoryAids?: string[];
     encouragement?: string;
+    sources?: RAGSource[];
+    grounded?: boolean;
+    cached?: boolean;
+    cacheType?: 'exact' | 'semantic' | null;
+    classification?: QueryClassification;
   };
 }
 
@@ -61,7 +129,7 @@ export interface QuizQuestion {
 export interface Quiz {
   id: string;
   title: string;
-  subject: Subject;
+  subject: string;
   questions: QuizQuestion[];
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }
@@ -91,7 +159,7 @@ export interface UserStats {
   quizzesCompleted: number;
   averageQuizScore: number;
   subjectPerformance: {
-    subject: Subject;
+    subject: string;
     score: number;
     hoursSpent: number;
   }[];
