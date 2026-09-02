@@ -13,7 +13,9 @@ import {
   Menu,
   X,
   User,
-  ShieldCheck
+  ShieldCheck,
+  LogOut,
+  LogIn
 } from 'lucide-react';
 import { PomodoroTimer } from './PomodoroTimer';
 
@@ -22,10 +24,22 @@ interface HeaderProps {
   setActiveTab: (tab: NavTab) => void;
   streakDays: number;
   profile: UserProfile;
+  currentUser: { id: string; email: string; name: string } | null;
   onOpenProfile: () => void;
+  onOpenAuth: () => void;
+  onLogout: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, streakDays, profile, onOpenProfile }) => {
+export const Header: React.FC<HeaderProps> = ({ 
+  activeTab, 
+  setActiveTab, 
+  streakDays, 
+  profile, 
+  currentUser,
+  onOpenProfile, 
+  onOpenAuth,
+  onLogout 
+}) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navItems: { id: NavTab; label: string; icon: React.ReactNode; desc?: string }[] = [
@@ -71,44 +85,54 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, streakD
             </div>
           </button>
 
-          {/* Right Section: Pomodoro Timer, Profile Badge, Streak/Gemini Status, & Mobile Hamburger */}
+          {/* Right Section: Pomodoro Timer, Auth Account, Streak & Mobile Hamburger */}
           <div className="flex items-center gap-2 sm:gap-3">
             <PomodoroTimer />
 
-            {/* User Profile Badge Button - Hidden on mobile, shown on desktop */}
-            <button
-              onClick={onOpenProfile}
-              className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-700/90 border border-indigo-500/30 hover:border-indigo-500/60 rounded-xl text-xs text-slate-200 font-semibold transition-all shadow-sm group"
-              title="Edit Profile & Study Goals"
-            >
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-[11px] font-bold shadow-sm shrink-0">
-                {profile.name ? profile.name.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
+            {/* User Auth Sign In / Logout Button */}
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onOpenProfile}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-700/90 border border-indigo-500/30 rounded-xl text-xs text-slate-200 font-semibold transition-all shadow-sm group"
+                  title="Profile & Preferences"
+                >
+                  <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-[11px] font-bold shadow-sm shrink-0">
+                    {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
+                  </div>
+                  <span className="hidden sm:inline font-bold text-white text-xs truncate max-w-[110px]">
+                    {currentUser.name}
+                  </span>
+                </button>
+                <button
+                  onClick={onLogout}
+                  className="p-1.5 sm:px-2.5 sm:py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
               </div>
-              <div className="hidden xl:block text-left leading-tight">
-                <div className="font-bold text-white text-[11px] group-hover:text-indigo-300 truncate max-w-[100px]">
-                  {profile.name || 'Scholar'}
-                </div>
-                <div className="text-[9px] text-slate-400 truncate max-w-[100px]">
-                  {profile.targetExam || 'General'}
-                </div>
-              </div>
-            </button>
+            ) : (
+              <button
+                onClick={onOpenAuth}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/30 transition-all"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign In</span>
+              </button>
+            )}
 
-            {/* Desktop Streak & Gemini Status Block */}
+            {/* Desktop Streak Block */}
             <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 bg-slate-800/90 border border-slate-700/60 rounded-xl text-xs leading-tight shadow-sm">
               <div className="flex items-center gap-1.5 text-amber-400 font-bold">
                 <Flame className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                 <span>{streakDays} Days</span>
               </div>
               <div className="h-4 w-px bg-slate-700" />
-              <div className="flex items-center gap-1.5 text-indigo-300 font-semibold" title="Deterministic sampling (Temp=0.0) + Server Hash Cache ensures identical answers across all devices">
-                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Deterministic RAG</span>
-              </div>
-              <div className="h-4 w-px bg-slate-700" />
               <div className="flex items-center gap-1.5 text-emerald-300 font-semibold">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Gemini 3.6 Active</span>
+                <span>Gemini 2.5 Active</span>
               </div>
             </div>
 
@@ -124,7 +148,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, streakD
 
         </div>
 
-        {/* Desktop Navigation Row (Always visible without hamburger on desktop) */}
+        {/* Desktop Navigation Row */}
         <nav className="hidden md:flex items-center gap-1.5 overflow-x-auto custom-scrollbar touch-scroll pb-1">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
@@ -153,15 +177,15 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, streakD
           {/* Mobile Profile & Streak Banner */}
           <div className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-slate-800/90 to-indigo-950/50 border border-indigo-500/20">
             <button
-              onClick={() => { setMobileMenuOpen(false); onOpenProfile(); }}
+              onClick={() => { setMobileMenuOpen(false); if (currentUser) onOpenProfile(); else onOpenAuth(); }}
               className="flex items-center gap-2.5 text-left"
             >
               <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">
-                {profile.name ? profile.name.charAt(0).toUpperCase() : 'S'}
+                {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : 'S'}
               </div>
               <div>
-                <div className="text-xs font-bold text-white">{profile.name}</div>
-                <div className="text-[10px] text-indigo-300">{profile.targetExam}</div>
+                <div className="text-xs font-bold text-white">{currentUser ? currentUser.name : 'Guest User'}</div>
+                <div className="text-[10px] text-indigo-300">{currentUser ? currentUser.email : 'Click to Sign In'}</div>
               </div>
             </button>
             <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
@@ -203,4 +227,3 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, streakD
     </header>
   );
 };
-

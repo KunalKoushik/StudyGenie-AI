@@ -10,9 +10,14 @@ import { SyllabusPlanner } from './components/SyllabusPlanner';
 import { QuizEngine } from './components/QuizEngine';
 import { AnalyticsView } from './components/AnalyticsView';
 import { UserProfileModal } from './components/UserProfileModal';
+import { AuthModal } from './components/AuthModal';
+import { Toaster, toast } from 'sonner';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<NavTab>('tutor');
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name: string } | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
   const [stats, setStats] = useState<UserStats>(() => {
     const saved = localStorage.getItem('studygenie_user_stats');
     if (saved) {
@@ -24,10 +29,32 @@ export const App: React.FC = () => {
   const [quizzes, setQuizzes] = useState<Quiz[]>(INITIAL_QUIZZES);
   const [activities, setActivities] = useState<RecentActivity[]>(INITIAL_ACTIVITIES);
 
-  // Save stats to localStorage on update
+  // Check authentication session on mount
   useEffect(() => {
-    localStorage.setItem('studygenie_user_stats', JSON.stringify(stats));
-  }, [stats]);
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.user) {
+          setCurrentUser(json.user);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      setCurrentUser(null);
+      toast.success('Logged out successfully');
+    } catch (err) {
+      toast.error('Logout failed');
+    }
+  };
+
+  const handleAuthSuccess = (user: { id: string; email: string; name: string }) => {
+    setCurrentUser(user);
+    toast.success(`Welcome ${user.name}!`);
+  };
 
   // User Profile & Onboarding State
   const [profile, setProfile] = useState<UserProfile>(() => {
@@ -38,31 +65,11 @@ export const App: React.FC = () => {
     return INITIAL_USER_PROFILE;
   });
 
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(() => !profile.onboarded);
-
-  // Load user profile from MongoDB on boot
-  useEffect(() => {
-    fetch('/api/profile')
-      .then(res => res.json())
-      .then(json => {
-        if (json.data && json.data.name) {
-          setProfile(json.data);
-          localStorage.setItem('studygenie_user_profile', JSON.stringify(json.data));
-        }
-      })
-      .catch(err => console.log('Using local cached profile:', err));
-  }, []);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
   const handleSaveProfile = (updated: UserProfile) => {
     setProfile(updated);
     localStorage.setItem('studygenie_user_profile', JSON.stringify(updated));
-
-    // Persist to MongoDB backend
-    fetch('/api/profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated)
-    }).catch(err => console.error('MongoDB profile sync error:', err));
   };
 
   const handleRecordFormulaSolved = () => {
@@ -121,12 +128,17 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
+      <Toaster position="top-right" theme="dark" richColors />
+      
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         streakDays={stats.streakDays}
         profile={profile}
+        currentUser={currentUser}
         onOpenProfile={() => setIsProfileModalOpen(true)}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
+        onLogout={handleLogout}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 pt-6">
@@ -159,16 +171,23 @@ export const App: React.FC = () => {
         {activeTab === 'analytics' && <AnalyticsView stats={stats} />}
       </main>
 
-      {/* User Information & Onboarding Modal */}
+      {/* Auth Login & Registration Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={handleAuthSuccess}
+      />
+
+      {/* User Information Modal */}
       <UserProfileModal
         profile={profile}
-        isOpen={isProfileModalOpen || !profile.onboarded}
+        isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         onSaveProfile={handleSaveProfile}
       />
 
       <footer className="border-t border-slate-800 bg-slate-950/80 py-4 px-4 text-center text-xs text-slate-500">
-        StudyGenie AI • Commercial Production Grade • Written by {profile.name || 'KK'}
+        StudyGenie AI • Commercial Production Grade • Created by KK
       </footer>
     </div>
   );
