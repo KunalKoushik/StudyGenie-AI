@@ -239,6 +239,113 @@ PEDAGOGICAL & PROFESSIONAL RULES:
 6. Do NOT enclose the JSON output in markdown backticks. Return pure JSON.
 `;
 
+const DYNAMIC_TOPIC_KNOWLEDGE: Record<string, {
+  category: string;
+  topicTitle: string;
+  summary: string;
+  concepts: string[];
+  steps: string[];
+  questions: string[];
+  mnemonic: string;
+}> = {
+  polymer: {
+    category: 'Chemistry & Materials Science',
+    topicTitle: 'Polymers & Monomers',
+    summary: 'A **polymer** is a large macromolecule composed of repeating structural units called **monomers**, connected by covalent chemical bonds.\n\n### Classification of Polymers:\n- **Natural Polymers**: DNA, proteins, cellulose, starch, and natural rubber.\n- **Synthetic Polymers**: Polyethylene (plastics), Nylon, PVC, Teflon, and Kevlar.',
+    concepts: ['Polymers & Monomers', 'Polymerization (Addition & Condensation)', 'Thermoplastics vs Thermosets'],
+    steps: [
+      '1. **Monomer Building Blocks**: Small reactive molecules (monomers) join together in long repeating chains.',
+      '2. **Polymerization Reactions**: Monomers undergo addition (chain-growth) or condensation (step-growth) reactions.',
+      '3. **Structure & Properties**: Polymer chain length, branching, and cross-linking determine flexibility, strength, and thermal melting point.'
+    ],
+    questions: [
+      'What is the fundamental difference between addition polymerization and condensation polymerization?',
+      'Why do thermosetting plastics retain their shape when heated, whereas thermoplastics melt and can be reshaped?'
+    ],
+    mnemonic: 'Polymer = "Poly" (Many) + "Mer" (Parts). Long chains of repeating monomer parts!'
+  },
+  photosynthesis: {
+    category: 'Biology & Biochemistry',
+    topicTitle: 'Photosynthesis',
+    summary: '**Photosynthesis** is the biological process by which autotrophic organisms (plants, algae, and cyanobacteria) convert light energy into chemical energy stored in glucose.\n\n$$6\\text{CO}_2 + 6\\text{H}_2\\text{O} \\xrightarrow{\\text{Light}} \\text{C}_6\\text{H}_{12}\\text{O}_6 + 6\\text{O}_2$$',
+    concepts: ['Light-Dependent Reactions (Thylakoids)', 'Calvin Cycle (Stroma)', 'Chlorophyll & Energy Storage'],
+    steps: [
+      '1. **Light Reactions**: Chlorophyll absorbs solar photons in thylakoids, splitting $H_2O$ to release $O_2$ and generate ATP/NADPH.',
+      '2. **Calvin Cycle**: Carbon fixation uses ATP/NADPH in the stroma to convert $CO_2$ into glucose.',
+      '3. **Ecological Role**: Provides primary organic biomass and atmospheric oxygen sustaining Earth\'s biosphere.'
+    ],
+    questions: [
+      'Where do light-dependent reactions occur versus the light-independent Calvin cycle inside a chloroplast?',
+      'What role does water ($H_2O$) play in the light reaction phase of photosynthesis?'
+    ],
+    mnemonic: 'Photosynthesis Equation: $6CO_2 + 6H_2O + \\text{Light} \\rightarrow \\text{Glucose} + 6O_2$'
+  },
+  newton: {
+    category: 'Physics & Classical Mechanics',
+    topicTitle: "Newton's Laws of Motion",
+    summary: "Newton's Second Law of Motion establishes that the acceleration ($a$) of an object is directly proportional to the net external force ($F$) applied, and inversely proportional to its mass ($m$).",
+    concepts: ["Newton's Second Law ($F = m \\cdot a$)", "Inertia & Momentum", "Vector Net Force"],
+    steps: [
+      "1. Draw a Free-Body Diagram (FBD) listing all external forces acting on mass $m$.",
+      "2. Apply Newton's Second Law equation: $$F_{\\text{net}} = m \\cdot a$$",
+      "3. Solve for the target variable (force $N$, mass $kg$, or acceleration $m/s^2$)."
+    ],
+    questions: [
+      "If the net force on an object is zero, does that mean the object must be stationary?",
+      "How does doubling the mass affect acceleration if force remains constant?"
+    ],
+    mnemonic: "F = m · a (Force in Newtons, Mass in kg, Acceleration in m/s²)"
+  },
+  lhopital: {
+    category: 'Calculus & Limits',
+    topicTitle: "L'Hôpital's Rule & Derivatives",
+    summary: "When evaluating a limit $\\lim_{x \\to a} \\frac{f(x)}{g(x)}$ that results in an indeterminate form such as $\\frac{0}{0}$ or $\\frac{\\infty}{\\infty}$, L'Hôpital's Rule allows us to take the derivatives of the numerator and denominator independently.",
+    concepts: ["L'Hôpital's Rule", "Indeterminate Forms (0/0, ∞/∞)", "Differentiability"],
+    steps: [
+      "1. Check that $\\lim_{x \\to a} f(x) = 0$ and $\\lim_{x \\to a} g(x) = 0$ (or both approach $\\pm\\infty$).",
+      "2. Differentiate numerator and denominator separately: $f'(x)$ and $g'(x)$.",
+      "3. Evaluate the new limit: $$\\lim_{x \\to a} \\frac{f(x)}{g(x)} = \\lim_{x \\to a} \\frac{f'(x)}{g'(x)}$$"
+    ],
+    questions: [
+      "Why must you check for indeterminate forms before applying L'Hôpital's Rule?",
+      "What happens if the first application of L'Hôpital's Rule still yields 0/0?"
+    ],
+    mnemonic: "Remember: Differentiate numerator and denominator separately, NEVER apply the quotient rule here!"
+  },
+  sn1: {
+    category: 'Organic Chemistry',
+    topicTitle: 'Nucleophilic Substitution ($S_N1$ vs $S_N2$)',
+    summary: '$S_N1$ and $S_N2$ are fundamental substitution mechanisms differing by steps, kinetics, substrate preference, and stereochemistry.',
+    concepts: ["$S_N1$ Unimolecular Kinetics", "$S_N2$ Concerted Backside Attack", "Carbocation Stability"],
+    steps: [
+      "1. $S_N1$: Two-step process forming a carbocation intermediate ($3^\\circ > 2^\\circ > 1^\\circ$). Results in racemization.",
+      "2. $S_N2$: One-step concerted backside attack ($1^\\circ > 2^\\circ > 3^\\circ$). Results in Walden inversion.",
+      "3. Solvent Influence: Polar protic solvents favor $S_N1$; polar aprotic solvents favor $S_N2$."
+    ],
+    questions: [
+      "Why do tertiary alkyl halides prefer $S_N1$ over $S_N2$?",
+      "What stereochemical outcome do you expect from an $S_N2$ attack at a chiral center?"
+    ],
+    mnemonic: "$S_N1$ = 2 Steps, Carbocation, $3^\\circ$. $S_N2$ = 1 Step, Inversion, $1^\\circ$."
+  },
+  bfs: {
+    category: 'Computer Science',
+    topicTitle: 'Graph Traversal (BFS vs DFS)',
+    summary: 'Breadth-First Search (BFS) and Depth-First Search (DFS) are fundamental algorithms for traversing tree and graph data structures.',
+    concepts: ["BFS (Queue / Level-Order)", "DFS (Stack / Recursion)", "Time Complexity $\\mathcal{O}(V + E)$"],
+    steps: [
+      "1. **BFS**: Uses a Queue (FIFO). Explores neighbor nodes level-by-level. Ideal for finding shortest path in unweighted graphs.",
+      "2. **DFS**: Uses a Stack (LIFO / Recursion). Explores deeply along each branch before backtracking. Ideal for topological sort.",
+      "3. **Complexity**: Both require $\\mathcal{O}(V + E)$ time complexity."
+    ],
+    questions: [
+      "Which traversal algorithm uses a Queue, and why is it preferred for shortest paths?",
+      "What is the maximum recursion depth memory cost of DFS on a tree of height $h$?"
+    ],
+    mnemonic: "BFS = Breadth (Queue / Level), DFS = Depth (Stack / Branch)"
+  }
+};
+
 function generateSmartTutorFallback(message: string, subject: string, level: string, sessionType: string) {
   const msgLower = message.toLowerCase().trim();
 
@@ -251,9 +358,9 @@ function generateSmartTutorFallback(message: string, subject: string, level: str
       responseType: sessionType,
       keyConcepts: [`${subject} Fundamentals`, 'Socratic Learning', 'Active Recall'],
       stepByStep: [
-        `1. Confirm your desired Subject (${subject}) and Level above`,
-        `2. Type any topic, question, or formula (e.g., "Explain L'Hôpital's rule", "F=ma example", "2+5")`,
-        `3. Review step-by-step breakdowns and check questions to lock in your understanding`
+        `1. Type any topic, problem, or equation below`,
+        `2. Review step-by-step Socratic breakdowns with LaTeX math formulas`,
+        `3. Test your recall with check questions`
       ],
       checkQuestions: [
         `What specific topic or problem in ${subject} would you like to explore first?`,
@@ -283,112 +390,17 @@ function generateSmartTutorFallback(message: string, subject: string, level: str
     };
   }
 
-  if (msgLower.includes('l\'hopital') || msgLower.includes('lhopital') || msgLower.includes('limit') || msgLower.includes('derivative') || msgLower.includes('calculus')) {
-    return {
-      mainMessage: `### Calculus & Limits Analysis: **L'Hôpital's Rule & Derivatives**\n\nWhen evaluating a limit $\\lim_{x \\to a} \\frac{f(x)}{g(x)}$ that results in an indeterminate form such as $\\frac{0}{0}$ or $\\frac{\\infty}{\\infty}$, L'Hôpital's Rule allows us to take the derivatives of the numerator and denominator independently.`,
-      responseType: 'concept_explanation',
-      keyConcepts: ["L'Hôpital's Rule", "Indeterminate Forms (0/0, ∞/∞)", "Differentiability & Continuity"],
-      stepByStep: [
-        "Step 1: Check that $\\lim_{x \\to a} f(x) = 0$ and $\\lim_{x \\to a} g(x) = 0$ (or both approach $\\pm\\infty$).",
-        "Step 2: Differentiate numerator and denominator separately: $f'(x)$ and $g'(x)$.",
-        "Step 3: Evaluate the new limit: $$\\lim_{x \\to a} \\frac{f(x)}{g(x)} = \\lim_{x \\to a} \\frac{f'(x)}{g'(x)}$$"
-      ],
-      checkQuestions: [
-        "Why must you check for indeterminate forms before applying L'Hôpital's Rule?",
-        "What happens if the first application of L'Hôpital's Rule still yields 0/0?"
-      ],
-      memoryAids: ["Remember: Differentiate numerator and denominator separately, NEVER apply the quotient rule here!"]
-    };
-  }
-
-  if (msgLower.includes('newton') || msgLower.includes('force') || msgLower.includes('f=ma') || msgLower.includes('motion') || msgLower.includes('velocity') || msgLower.includes('physics')) {
-    return {
-      mainMessage: `### Physics & Classical Mechanics: **Newton's Laws of Motion**\n\nNewton's Second Law of Motion establishes that the acceleration ($a$) of an object is directly proportional to the net external force ($F$) applied, and inversely proportional to its mass ($m$).`,
-      responseType: 'problem_solving',
-      keyConcepts: ["Newton's Second Law ($F = m \\cdot a$)", "Inertia & Momentum", "Vector Net Force"],
-      stepByStep: [
-        "Step 1: Draw a Free-Body Diagram (FBD) listing all external forces acting on mass $m$.",
-        "Step 2: Apply Newton's Second Law equation: $$F_{\\text{net}} = m \\cdot a$$",
-        "Step 3: Solve for the target variable (force $N$, mass $kg$, or acceleration $m/s^2$)."
-      ],
-      checkQuestions: [
-        "If the net force on an object is zero, does that mean the object must be stationary?",
-        "How does doubling the mass affect acceleration if force remains constant?"
-      ],
-      memoryAids: ["F = m · a (Force in Newtons, Mass in kg, Acceleration in m/s²)"]
-    };
-  }
-
-  if (msgLower.includes('polymer') || msgLower.includes('monomer') || msgLower.includes('plastic')) {
-    return {
-      mainMessage: `### Chemistry & Materials Science: **Polymers & Monomers**\n\nA **polymer** is a large macromolecule composed of repeating structural units called **monomers**, connected by covalent chemical bonds.\n\n### Classification of Polymers:\n- **Natural Polymers**: DNA, proteins (amino acid polymers), cellulose, starch, and natural rubber.\n- **Synthetic Polymers**: Polyethylene (plastics), Nylon, PVC (polyvinyl chloride), Teflon, and Kevlar.`,
-      responseType: 'concept_explanation',
-      keyConcepts: ['Polymers & Monomers', 'Polymerization (Addition & Condensation)', 'Thermoplastics vs Thermosets'],
-      stepByStep: [
-        '1. **Monomer Building Blocks**: Small reactive molecules (monomers) join together in long repeating chains.',
-        '2. **Polymerization Reactions**: Monomers undergo addition (chain-growth) or condensation (step-growth) reactions.',
-        '3. **Structure & Properties**: Polymer chain length, branching, and cross-linking determine flexibility, strength, and thermal melting point.'
-      ],
-      checkQuestions: [
-        'What is the fundamental difference between addition polymerization and condensation polymerization?',
-        'Why do thermosetting plastics retain their shape when heated, whereas thermoplastics melt and can be reshaped?'
-      ],
-      memoryAids: ['Polymer = "Poly" (Many) + "Mer" (Parts). Long chains of repeating monomer parts!']
-    };
-  }
-
-  if (msgLower.includes('photosynthesis') || msgLower.includes('chlorophyll') || msgLower.includes('plant')) {
-    return {
-      mainMessage: `### Biology & Biochemistry: **Photosynthesis**\n\n**Photosynthesis** is the biological process by which autotrophic organisms (plants, algae, and cyanobacteria) convert light energy into chemical energy stored in glucose.\n\n### Overall Chemical Equation:\n$$6\\text{CO}_2 + 6\\text{H}_2\\text{O} \\xrightarrow{\\text{Light}} \\text{C}_6\\text{H}_{12}\\text{O}_6 + 6\\text{O}_2$$`,
-      responseType: 'concept_explanation',
-      keyConcepts: ['Light-Dependent Reactions (Thylakoids)', 'Calvin Cycle (Stroma)', 'Chlorophyll & Energy Storage'],
-      stepByStep: [
-        '1. **Light Reactions**: Chlorophyll absorbs solar photons in thylakoid membranes, splitting water ($H_2O$) to release $O_2$ and generate ATP/NADPH.',
-        '2. **Calvin Cycle**: Carbon fixation uses ATP/NADPH in the stroma to convert carbon dioxide ($CO_2$) into G3P/glucose.',
-        '3. **Ecological Role**: Provides primary organic biomass and atmospheric oxygen sustaining Earth\'s biosphere.'
-      ],
-      checkQuestions: [
-        'Where do light-dependent reactions occur versus the light-independent Calvin cycle inside a chloroplast?',
-        'What role does water ($H_2O$) play in the light reaction phase of photosynthesis?'
-      ],
-      memoryAids: ['Photosynthesis Equation: $6CO_2 + 6H_2O + \\text{Light} \\rightarrow \\text{Glucose} + 6O_2$']
-    };
-  }
-
-  if (msgLower.includes('sn1') || msgLower.includes('sn2') || msgLower.includes('organic') || msgLower.includes('reaction') || msgLower.includes('chemistry') || msgLower.includes('nucleophile')) {
-    return {
-      mainMessage: `### Organic Chemistry: **Nucleophilic Substitution ($S_N1$ vs $S_N2$)**\n\n$S_N1$ and $S_N2$ are fundamental substitution mechanisms differing by steps, kinetics, substrate preference, and stereochemistry.`,
-      responseType: 'concept_explanation',
-      keyConcepts: ["$S_N1$ Unimolecular Kinetics", "$S_N2$ Concerted Backside Attack", "Carbocation Stability"],
-      stepByStep: [
-        "1. $S_N1$: Two-step process forming a carbocation intermediate ($3^\\circ > 2^\\circ > 1^\\circ$). Results in racemization.",
-        "2. $S_N2$: One-step concerted backside attack ($1^\\circ > 2^\\circ > 3^\\circ$). Results in Walden inversion.",
-        "3. Solvent Influence: Polar protic solvents favor $S_N1$; polar aprotic solvents favor $S_N2$."
-      ],
-      checkQuestions: [
-        "Why do tertiary alkyl halides prefer $S_N1$ over $S_N2$?",
-        "What stereochemical outcome do you expect from an $S_N2$ attack at a chiral center?"
-      ],
-      memoryAids: ["$S_N1$ = 2 Steps, Carbocation, $3^\\circ$. $S_N2$ = 1 Step, Inversion, $1^\\circ$."]
-    };
-  }
-
-  if (msgLower.includes('bfs') || msgLower.includes('dfs') || msgLower.includes('algorithm') || msgLower.includes('tree') || msgLower.includes('graph') || msgLower.includes('sorting') || msgLower.includes('code')) {
-    return {
-      mainMessage: `### Computer Science: **Graph Traversal (BFS vs DFS)**\n\nBreadth-First Search (BFS) and Depth-First Search (DFS) are fundamental algorithms for traversing tree and graph data structures.`,
-      responseType: 'concept_explanation',
-      keyConcepts: ["BFS (Queue / Level-Order)", "DFS (Stack / Recursion)", "Time Complexity $\\mathcal{O}(V + E)$"],
-      stepByStep: [
-        "1. **BFS**: Uses a Queue (FIFO). Explores neighbor nodes level-by-level. Ideal for finding shortest path in unweighted graphs.",
-        "2. **DFS**: Uses a Stack (LIFO / Recursion). Explores deeply along each branch before backtracking. Ideal for topological sort.",
-        "3. **Complexity**: Both require $\\mathcal{O}(V + E)$ time complexity."
-      ],
-      checkQuestions: [
-        "Which traversal algorithm uses a Queue, and why is it preferred for shortest paths?",
-        "What is the maximum recursion depth memory cost of DFS on a tree of height $h$?"
-      ],
-      memoryAids: ["BFS = Breadth (Queue / Level), DFS = Depth (Stack / Branch)"]
-    };
+  for (const [key, topic] of Object.entries(DYNAMIC_TOPIC_KNOWLEDGE)) {
+    if (msgLower.includes(key)) {
+      return {
+        mainMessage: `### ${topic.category}: **${topic.topicTitle}**\n\n${topic.summary}`,
+        responseType: sessionType,
+        keyConcepts: topic.concepts,
+        stepByStep: topic.steps,
+        checkQuestions: topic.questions,
+        memoryAids: [topic.mnemonic]
+      };
+    }
   }
 
   const cleanTopic = message.replace(/^(what is|explain|tell me about|define|how does|why does)\s+/i, '').trim();
